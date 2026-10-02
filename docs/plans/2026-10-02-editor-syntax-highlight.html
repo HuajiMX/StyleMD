@@ -1,0 +1,730 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>StyleMD 实施规划 · 源码编辑器高亮样式</title>
+<style>
+  :root {
+    --bg: #f4f6fa;
+    --panel: #ffffff;
+    --panel-alt: #f5f7fa;
+    --line: #dfe4ec;
+    --line-strong: #c6cedb;
+    --ink: #17202e;
+    --ink-2: #46536a;
+    --muted: #7b879b;
+    --accent: #2f6fed;
+    --accent-soft: #eaf1ff;
+    --accent-line: #a9c6fb;
+    --ok: #1f7a4d;
+    --ok-soft: #e8f5ee;
+    --warn: #9a6b00;
+    --warn-soft: #fdf3dc;
+    --danger: #b93220;
+    --danger-soft: #fdecea;
+    --syn-heading: #1d4ed8;
+    --syn-mark: #a9c6fb;
+    --syn-em: #7a3ea8;
+    --syn-code: #0f766e;
+    --syn-code-bg: #f1f5f9;
+    --syn-link: #0b6bcb;
+    --syn-list: #b45309;
+    --syn-meta: #7b879b;
+    --syn-sep: #c6cedb;
+    --mono: ui-monospace, SFMono-Regular, Consolas, "Cascadia Mono", monospace;
+    --sans: system-ui, -apple-system, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0; background: var(--bg); color: var(--ink);
+    font-family: var(--sans); font-size: 14px; line-height: 1.72;
+  }
+  .layout { display: flex; align-items: flex-start; max-width: 1180px; margin: 0 auto; }
+  nav.toc {
+    position: sticky; top: 0; flex: 0 0 208px;
+    max-height: 100vh; overflow: auto; padding: 28px 14px 40px 20px;
+    font-size: 12.5px;
+  }
+  nav.toc h2 { font-size: 11px; letter-spacing: .08em; text-transform: uppercase; color: var(--muted); margin: 0 0 10px; }
+  nav.toc a { display: block; padding: 3px 8px; color: var(--ink-2); text-decoration: none; border-left: 2px solid transparent; }
+  nav.toc a:hover { color: var(--accent); background: var(--accent-soft); border-left-color: var(--accent); }
+  main { flex: 1 1 auto; min-width: 0; padding: 28px 28px 96px; }
+  header.doc {
+    background: var(--panel); border: 1px solid var(--line); border-radius: 14px;
+    padding: 22px 24px; margin-bottom: 20px;
+  }
+  header.doc h1 { margin: 0 0 6px; font-size: 24px; letter-spacing: -.01em; }
+  .meta-line { font-size: 12px; color: var(--muted); margin-bottom: 14px; }
+  .north-star {
+    margin: 0; padding: 12px 14px; background: var(--accent-soft);
+    border-left: 3px solid var(--accent); border-radius: 0 8px 8px 0;
+  }
+  section {
+    background: var(--panel); border: 1px solid var(--line); border-radius: 14px;
+    padding: 20px 24px; margin-bottom: 18px; scroll-margin-top: 16px;
+  }
+  h2 { font-size: 18px; margin: 0 0 4px; }
+  h2 .num { color: var(--accent); font-variant-numeric: tabular-nums; margin-right: 8px; }
+  h3 { font-size: 14.5px; margin: 22px 0 8px; }
+  h4 { font-size: 13px; margin: 18px 0 6px; color: var(--ink-2); }
+  p { margin: 8px 0; }
+  .sub { color: var(--muted); font-size: 12.5px; margin: 0 0 14px; }
+  ul, ol { margin: 8px 0; padding-left: 22px; }
+  li { margin: 4px 0; }
+  code { font-family: var(--mono); font-size: 12.2px; background: var(--syn-code-bg); padding: 1px 5px; border-radius: 4px; }
+  pre { font-family: var(--mono); font-size: 12.2px; background: #0f172a; color: #e8eefa; padding: 12px 14px; border-radius: 9px; overflow: auto; }
+  pre code { background: none; padding: 0; color: inherit; }
+  table { width: 100%; border-collapse: collapse; margin: 12px 0; font-size: 12.8px; }
+  th, td { border: 1px solid var(--line); padding: 7px 9px; text-align: left; vertical-align: top; }
+  th { background: var(--panel-alt); font-weight: 600; color: var(--ink-2); }
+  td.c, th.c { text-align: center; }
+  .pill { display: inline-block; font-size: 11px; padding: 1px 8px; border-radius: 999px; background: var(--panel-alt); border: 1px solid var(--line-strong); color: var(--ink-2); }
+  .pill.p1 { background: var(--accent-soft); border-color: var(--accent-line); color: #1c4bb8; }
+  .pill.p2 { background: var(--warn-soft); border-color: #e8cd8c; color: var(--warn); }
+  .pill.p3 { background: var(--ok-soft); border-color: #b5dcc7; color: var(--ok); }
+  .risk-hi { color: var(--danger); font-weight: 600; }
+  .risk-md { color: var(--warn); font-weight: 600; }
+  .risk-lo { color: var(--ok); font-weight: 600; }
+  .cards { display: grid; gap: 12px; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); margin-top: 12px; }
+  .card { border: 1px solid var(--line); border-radius: 11px; padding: 13px 15px; background: var(--panel); }
+  .card.q { border-left: 3px solid var(--accent); }
+  .card h4 { margin: 0 0 6px; font-size: 13.5px; color: var(--ink); }
+  .card .ctx { font-size: 12.6px; color: var(--ink-2); }
+  .rec { background: var(--accent-soft); border-radius: 7px; padding: 7px 10px; margin-top: 9px; font-size: 12.6px; }
+  .rec b { color: #1c4bb8; }
+  .links { margin-top: 8px; font-size: 12.2px; color: var(--muted); }
+  .links a { color: var(--accent); text-decoration: none; }
+  .links a:hover { text-decoration: underline; }
+  .two-col { display: grid; gap: 16px; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); }
+  .note { font-size: 12.5px; color: var(--muted); border-left: 2px solid var(--line-strong); padding-left: 10px; margin: 10px 0; }
+  .kv { font-size: 12.8px; background: var(--panel-alt); border-radius: 8px; padding: 9px 12px; margin: 10px 0; }
+
+  /* ---------- 编辑器外观 mockup ---------- */
+  .mock {
+    border: 1px solid var(--line-strong); border-radius: 10px; overflow: hidden;
+    background: var(--panel); margin: 12px 0;
+  }
+  .mock-bar {
+    display: flex; align-items: center; gap: 8px; padding: 6px 10px;
+    background: var(--panel-alt); border-bottom: 1px solid var(--line);
+    font-size: 11.5px; color: var(--muted);
+  }
+  .mock-code {
+    font-family: var(--mono); font-size: 12.5px; line-height: 1.75;
+    padding: 10px 12px; white-space: pre; overflow-x: auto; color: var(--ink);
+  }
+  .mock-code .ln { color: var(--syn-sep); user-select: none; }
+  .sy-meta { color: var(--syn-meta); }
+  .sy-h { color: var(--syn-heading); font-weight: 700; }
+  .sy-mark { color: var(--syn-mark); font-weight: 400; }
+  .sy-em { color: var(--syn-em); }
+  .sy-code { color: var(--syn-code); background: var(--syn-code-bg); border-radius: 3px; }
+  .sy-link { color: var(--syn-link); text-decoration: underline; }
+  .sy-url { color: var(--syn-meta); }
+  .sy-list { color: var(--syn-list); }
+  .sy-sep { color: var(--syn-sep); }
+  .sy-quote { color: #4b5563; }
+  .active-block { display: block; background: var(--accent-soft); box-shadow: inset 3px 0 0 var(--accent); }
+  .active-line { display: block; background: #f2f6ff; }
+  .mock-plain { color: var(--ink-2); }
+  .swatch { display: inline-block; width: 12px; height: 12px; border-radius: 3px; border: 1px solid rgba(0,0,0,.12); vertical-align: -1px; margin-right: 6px; }
+
+  @media print {
+    body { background: #fff; }
+    nav.toc { display: none; }
+    main { padding: 0; }
+    section, header.doc { break-inside: avoid; border-color: #ccc; }
+  }
+  @media (max-width: 900px) {
+    .layout { display: block; }
+    nav.toc { position: static; max-height: none; padding: 16px 20px 0; }
+  }
+</style>
+</head>
+<body>
+<div class="layout">
+<nav class="toc">
+  <h2>目录</h2>
+  <a href="#scope">1 范围与边界</a>
+  <a href="#questions">2 待定决策</a>
+  <a href="#sources">3 已核查来源</a>
+  <a href="#current">4 现状与缺口</a>
+  <a href="#target">5 目标行为</a>
+  <a href="#ux">6 交互与视觉</a>
+  <a href="#architecture">7 方案与替代</a>
+  <a href="#model">8 模型与依赖影响</a>
+  <a href="#phases">9 分阶段实施</a>
+  <a href="#qa">10 验证矩阵</a>
+  <a href="#dod">11 验收与完成定义</a>
+  <a href="#risks">12 风险与缓解</a>
+  <a href="#repo">13 仓库影响清单</a>
+  <a href="#handoff">14 实施交接</a>
+</nav>
+
+<main>
+<header class="doc">
+  <h1>源码编辑器高亮样式 · 实施规划</h1>
+  <p class="meta-line">2026-10-02 ｜ 仓库：E:\projects\StyleMD ｜ 分支：main（工作区干净）｜ 状态：待评审，未动实现代码</p>
+  <p class="north-star">
+    <b>北极星：</b>让工作台左侧的源码区从「一视同仁的灰字」变成「一眼看得出文档结构、也看得见自己正在改哪一段」的编辑器——
+    Markdown 语法按 StyleMD 自己的调色板上色，光标所在结构在源码里同步高亮；而这次改动<b>不触碰</b> <code>core</code>、
+    样式模型、以及预览与导出的共用渲染路径。
+  </p>
+</header>
+
+<section id="scope">
+  <h2><span class="num">1</span>范围与边界</h2>
+
+  <h3>本次要做</h3>
+  <ul>
+    <li><b>换掉源码区的编辑内核</b>：把 <code>apps/demo</code> 的受控 <code>&lt;textarea&gt;</code> 换成规划 §15 已选定的 CodeMirror 6。</li>
+    <li><b>Markdown 语法高亮</b>：前置元数据、标题及其标记、强调/加粗、行内代码、围栏代码块、链接、引用、列表标记、分隔线、表格竖线各有稳定色调。</li>
+    <li><b>结构高亮</b>：光标所在「角色块」（复用 <code>collectRoleSpans</code> 的原文偏移）整体淡染 + 左侧竖条，当前行再叠一层更淡的底色。</li>
+    <li><b>高亮配色可调</b>：全部颜色收敛为工作台 CSS 变量，一处改、全局生效，为后续深色主题与 M3 代码块主题留接口。</li>
+    <li><b>保住既有能力</b>：光标 → 样式卡片定位、编辑器→预览滚动同步、预览→编辑器反向滚动、大纲当前章节高亮、会话光标恢复、字数统计、视图模式与宽度拖拽，逐条回归验证。</li>
+  </ul>
+
+  <h3>本次不做（非目标）</h3>
+  <ul>
+    <li>不改 <code>packages/core</code>、<code>packages/theme-schema</code>、<code>packages/presets</code>、<code>packages/renderer-paged</code>：编辑器高亮属于宿主 UI 层，不是渲染内核的职责。</li>
+    <li>不改 <code>build()</code> 产出的 HTML/CSS，预览与导出路径一行不动（架构约束 3：预览与导出共用同一份 HTML）。</li>
+    <li>不做<b>渲染输出侧</b>的代码块语法高亮（Shiki），那是规划 §6「代码」行 + M3 的范围；本次只做<b>编辑器里</b>的语法上色，两者共用一份调色板但不共用实现。</li>
+    <li>不做深色工作台主题、搜索替换、多光标批量编辑、代码折叠、行号槽、Vim 键位。</li>
+    <li>不做 WYSIWYG 或编辑器内嵌预览——本项目定位是「用户继续写 Markdown 源码，只是不用手写 CSS」（规划 §4 假设）。</li>
+  </ul>
+
+  <h3>假设</h3>
+  <ul>
+    <li>接受规划 §15 的编辑器选型（CodeMirror 6），本次不重新论证「该不该自己写编辑器」。</li>
+    <li>允许安装 npm 依赖；允许改 demo 与 e2e 的包内结构。</li>
+    <li>本机 Chromium 可用，<code>node e2e/smoke.mjs</code> 能跑（沿用既有约定，可用 <code>STYLEMD_CHROME</code> 指定）。</li>
+    <li>性能目标沿用规划 M2 验收：50 页量级文档，输入延迟 &lt; 50ms、预览刷新 ≤ 300ms。</li>
+  </ul>
+
+  <h3>权限边界</h3>
+  <div class="kv">
+    <b>可动：</b><code>apps/demo/**</code>、<code>e2e/**</code>、<code>apps/demo/package.json</code> 依赖、<code>apps/demo/src/styles.css</code>、本规划文档。<br>
+    <b>请示后再动：</b>任何 <code>packages/*</code> 的改动、<code>tsconfig.json</code> / <code>vite.config.ts</code> 的别名变更、<code>schemaVersion</code> 与迁移逻辑。<br>
+    <b>不动：</b>预览 iframe 的沙箱与 CSP 策略（<code>App.tsx</code> 的 <code>PREVIEW_CHROME_CSS</code> / <code>sandbox</code> 注入）。
+  </div>
+</section>
+
+<section id="questions">
+  <h2><span class="num">2</span>待定决策</h2>
+  <p class="sub">先看这四条：它们决定工作量和风险面，其余细节都建立在这里的答案之上。决策人：项目所有者。</p>
+
+  <div class="cards">
+    <div class="card q">
+      <h4>Q1 · 迁移节奏：分两步还是一次换掉？</h4>
+      <p class="ctx">一次替换要同时动 App 的 6 处滚动/光标逻辑、组件、样式与 15 处 e2e 断言。出问题时很难判断是「抽象没抽对」还是「新编辑器行为不同」。</p>
+      <p class="ctx">分两步则是：PR A 只做行为等价的重构（把 <code>HTMLTextAreaElement</code> 换成一层编辑器句柄），PR B 才把实现换成 CodeMirror 6。</p>
+      <div class="rec"><b>建议：</b>分两步。PR A 结束时全部既有测试必须仍然通过，把「重构引入的问题」和「新编辑器引入的问题」隔离在两次提交里；回滚也只需 revert PR B。详见 <a href="#phases">§9</a>、<a href="#handoff">§14</a>。</div>
+      <p class="links">相关：<a href="#architecture">§7 方案与替代</a> · <a href="#risks">§12 风险</a></p>
+    </div>
+
+    <div class="card q">
+      <h4>Q2 · 结构高亮要不要和语法高亮同一批交付？</h4>
+      <p class="ctx">语法高亮解决「读得清」，结构高亮解决「知道自己在改哪个角色」。两者都用 CodeMirror 的 Decoration 机制，共用同一个插件入口；但拆开做要多改一轮 e2e。</p>
+      <div class="rec"><b>建议：</b>同一批交付，但<b>视觉权重分清主次</b>——语法上色用色相区分，结构高亮只用极淡底色 + 左侧竖条，避免两种高亮互相盖住。详见 <a href="#ux">§6</a>。</div>
+      <p class="links">相关：<a href="#target">§5 目标行为</a> · <a href="#ux">§6 交互与视觉</a></p>
+    </div>
+
+    <div class="card q">
+      <h4>Q3 · 高亮配色归工作台还是归样式包？</h4>
+      <p class="ctx">样式包（<code>*.stylemd.json</code>）描述的是「文档渲染到纸上的样子」；编辑器是宿主 chrome，用户导出的样式包不该改变工作台自己的界面配色。</p>
+      <div class="rec"><b>建议：</b>归工作台 CSS 变量（<code>--syn-*</code>）。同时把这组变量与 M3 的代码块主题预留为<b>同一份调色板源</b>，避免以后两套颜色各自漂移。详见 <a href="#model">§8</a>。</div>
+      <p class="links">相关：<a href="#model">§8 模型与依赖影响</a> · <a href="#ux">§6 调色板</a></p>
+    </div>
+
+    <div class="card q">
+      <h4>Q4 · 正文文字要不要也上色？</h4>
+      <p class="ctx">把整行染成彩色会让长文阅读变累，也让低对比度配色通过不了可读性要求。</p>
+      <div class="rec"><b>建议：</b>正文文字保持 <code>--ink</code>（#17202e）不动，<b>只给结构标记与行内标记上色</b>（<code>#</code>、<code>-</code>、反引号、链接、引用符号）。标题只加粗加深，不改字号，避免行高抖动影响滚动定位。详见 <a href="#ux">§6</a>。</div>
+      <p class="links">相关：<a href="#ux">§6 交互与视觉</a></p>
+    </div>
+  </div>
+</section>
+
+<section id="sources">
+  <h2><span class="num">3</span>已核查来源</h2>
+  <p class="sub">下面每一项都实际打开读过，结论写在本规划里；没有推测性引用。</p>
+  <table>
+    <thead><tr><th>来源</th><th>读到了什么</th></tr></thead>
+    <tbody>
+      <tr>
+        <td><code>docs/plans/2026-09-30-stylemd-development-plan.html</code>（§M2、§6、§15、线框图）</td>
+        <td>M2 明确写着「CodeMirror 6 源码编辑器（Markdown 语法高亮、快捷键、大纲面板）」，线框图标注「① 源码 · CodeMirror 6」「光标所在段落 → 高亮③中对应角色」，技术选型表「编辑器 = CodeMirror 6，体积小、可扩展、Markdown 模式成熟」。本规划是这条既有决策的落地细化，不是新决策。</td>
+      </tr>
+      <tr>
+        <td><code>apps/demo/src/components/SourcePane.tsx</code></td>
+        <td>当前是受控 <code>&lt;textarea class="source-input"&gt;</code>，通过 <code>onChange / onSelect / onClick / onKeyUp / onFocus / onScroll</code> 六类事件把值、光标偏移、滚动进度报给上层。无任何渲染层，因此「加高亮」必须换内核或加覆盖层。</td>
+      </tr>
+      <tr>
+        <td><code>apps/demo/src/App.tsx</code>（约 6 处强耦合）</td>
+        <td><code>sourceRef</code> 被当作 <code>HTMLTextAreaElement</code> 使用：<code>applyPreviewScroll</code>（写 <code>scrollTop</code>）、会话恢复（<code>setSelectionRange</code> + <code>offsetToScrollTop</code>）、<code>updateActiveOutline</code>（<code>scrollTopsForOffsets</code>）、<code>jumpToOutline</code>（<code>setSelectionRange</code> + <code>scrollTop</code>）、渲染时传入 <code>textareaRef</code>。这五处是替换编辑器的真实工作量所在。</td>
+      </tr>
+      <tr>
+        <td><code>apps/demo/src/lib/textareaScroll.ts</code></td>
+        <td>为了绕开 textarea 的滚动几何不可靠，仓库已经自建了「逐像素镜像 + Range 测量」方案（复制 12 项样式、同宽同高同 padding、同步滚动）。CodeMirror 的原生 <code>lineBlockAt</code> / <code>coordsAtPos</code> 可以整体取代这套测量，且是 O(log n) 而非重排全文。</td>
+      </tr>
+      <tr>
+        <td><code>packages/core/src/roles/locate.ts</code></td>
+        <td>已导出 <code>collectRoleSpans(source)</code> → <code>RoleSpan[] { role, start, end, depth, parent }</code>（原文坐标，含前置元数据）与 <code>roleAtOffset</code>。结构高亮所需的数据<b>今天就有</b>，不需要新解析器。</td>
+      </tr>
+      <tr>
+        <td><code>packages/theme-schema/src/roles.ts</code></td>
+        <td><code>cssRoleName('heading.1') → 'heading-1'</code>、<code>roleLabel</code>、<code>FALLBACK_ROLE</code> 均可复用。角色 → DOM 短横线命名的约定已在仓库里，无需新造。</td>
+      </tr>
+      <tr>
+        <td><code>apps/demo/src/styles.css</code></td>
+        <td><code>:root</code> 已有一整套工作台 token（<code>--panel</code> / <code>--ink</code> / <code>--accent</code> / <code>--mono</code> …，<code>color-scheme: light</code>）；<code>.source-pane</code> / <code>.source-input</code> 是唯二与源码区相关的选择器，可原位承接到新的编辑器容器上。</td>
+      </tr>
+      <tr>
+        <td><code>e2e/smoke.mjs</code>（15 处 <code>.source-input</code>）</td>
+        <td>测试直接依赖 textarea 语义：<code>inputValue()</code>、<code>fill()</code>、<code>element.value</code>、<code>element.scrollTop = 0 / scrollHeight</code>、<code>focus()</code>、光标位置读取。换内核后这些断言全部要改成编辑器辅助函数，是本次最容易被低估的一块。</td>
+      </tr>
+      <tr>
+        <td><code>docs/plans/2026-10-01-review-and-hardening.md</code>、<code>README.md</code></td>
+        <td>基线证据：8 个测试文件 63 项全通过、<code>tsc --noEmit</code> 通过、构建 1256.98 kB（gzip 267.33 kB）、端到端 10/10。README 的「未实现」清单里写的是<b>渲染侧</b>代码高亮，与本次编辑器高亮不是同一件事。</td>
+      </tr>
+      <tr>
+        <td><code>git status</code> / <code>git log</code></td>
+        <td>工作区干净；最近三次提交是「大纲滚动高亮」「预览与编辑器双向滚动同步」「标题栏样式」——说明滚动/定位基础设施刚做过一轮，本次替换要特别防止把这些回归掉。</td>
+      </tr>
+    </tbody>
+  </table>
+</section>
+
+<section id="current">
+  <h2><span class="num">4</span>现状与缺口</h2>
+  <table>
+    <thead><tr><th>能力</th><th>现状（2026-10-02）</th><th>缺口</th></tr></thead>
+    <tbody>
+      <tr><td>源码渲染</td><td>纯 <code>&lt;textarea&gt;</code>，全部文字同一颜色同一字重</td><td>看不到标题层级、代码块边界、链接与前言的边界</td></tr>
+      <tr><td>光标 → 角色</td><td>已有：<code>collectRoleSpans</code> + <code>roleAtOffset</code>，底部状态栏显示「定位：一级标题」，功能区样式卡片高亮</td><td>信息只流向右侧面板，<b>源码区自己没有任何反馈</b>——用户看不出刚点的那个结构是哪一段</td></tr>
+      <tr><td>大纲联动</td><td>已有：滚动时左侧大纲高亮当前章节</td><td>反向缺失：点大纲只移动光标，源码里没有任何视觉落点</td></tr>
+      <tr><td>滚动几何</td><td>已有：镜像测量（<code>textareaScroll.ts</code>）+ 与预览的进度同步</td><td>每次测量要重排一遍全文，长文档上属于纯开销；换成编辑器内核后可直接拿原生几何</td></tr>
+      <tr><td>编辑器内核</td><td>规划 §M2 定为 CodeMirror 6，尚未接入</td><td>本次落地</td></tr>
+      <tr><td>测试面</td><td>e2e 15 处断言依赖 textarea 语义</td><td>需要一层编辑器辅助函数，否则换内核等于推倒重写测试</td></tr>
+    </tbody>
+  </table>
+  <p class="note">规模判断：这是一次<b>局部替换</b>而非架构变更——数据来源（<code>collectRoleSpans</code>）和下游消费方（状态栏、功能区、大纲）都不动，只换「源码区」这一个窗格的实现，并补一层薄薄的句柄接口。</p>
+</section>
+
+<section id="target">
+  <h2><span class="num">5</span>目标行为</h2>
+  <ol>
+    <li><b>打开即上色</b>：文档加载后 1 帧内源码区已按语法着色，无闪烁、无「先黑后彩」的过渡。</li>
+    <li><b>边打边上色</b>：输入不打断高亮；180ms 防抖后才重算的只是预览与角色跨度，编辑器自身的 token 高亮由增量解析即时完成。</li>
+    <li><b>光标到哪，结构就亮到哪</b>：光标落在某个角色跨度内时，该跨度在源码里显示一条 3px 左侧竖条 + 极淡底色；光标所在行再叠一层更淡的底色。光标落在前言/元数据时不高亮任何结构块，只保留当前行。</li>
+    <li><b>点大纲跳得准</b>：点大纲条目 → 编辑器得到焦点、插入点落到该标题起始偏移、目标标题顶到首行（与今天的行为逐像素一致或更好）。</li>
+    <li><b>滚动同步不失真</b>：编辑器与预览的进度双向同步保持今天的表现；长文档下不再每次测量都重排全文。</li>
+    <li><b>配色集中可调</b>：所有高亮色来自 <code>:root</code> 里的 <code>--syn-*</code> 变量，改一处即全局生效，且不随导入的样式包变化。</li>
+    <li><b>行为零回归</b>：新建/载入示例/打开 .md/另存/重命名、字数统计、会话恢复（文档 + 光标 + 布局）、三种视图模式、两条拖拽分隔条，全部与今天一致。</li>
+  </ol>
+</section>
+
+<section id="ux">
+  <h2><span class="num">6</span>交互与视觉</h2>
+
+  <h3>目标外观（低保证真度线框，颜色按建议调色板实际渲染）</h3>
+  <div class="mock">
+    <div class="mock-bar"><b>源码</b><span>Markdown</span><span style="margin-left:auto">光标：第 11 行 · 定位：引用块 blockquote</span></div>
+<div class="mock-code"><span class="sy-meta">---
+title: 样式模型设计说明
+schemaVersion: 1
+---</span>
+
+<span class="sy-h"><span class="sy-mark">#</span> 第一章 绪论</span>
+
+正文里提到 <span class="sy-code">`renderToPdf()`</span> 与 <span class="sy-link">[Paged.js]</span><span class="sy-url">(https://pagedjs.org)</span> 的关系，<span class="sy-em">**预览与导出必须共用一份 HTML**</span>。
+
+<span class="sy-h"><span class="sy-mark">##</span> 1.1 研究背景</span>
+
+<span class="active-block"><span class="sy-mark">&gt;</span> <span class="sy-quote">排版工具的差异不在功能多少，而在用户能否精确控制结果。</span></span>
+<span class="active-line"> </span>
+<span class="sy-list">-</span> 结构角色化：<span class="sy-code">`heading.1`</span>
+<span class="sy-list">-</span> 分页预览：Paged.js
+
+<span class="sy-sep">```ts</span>
+<span class="sy-code">const theme = loadTheme('thesis-cn')
+render(doc, theme)</span>
+<span class="sy-sep">```</span>
+
+<span class="sy-sep">---</span>
+</div>
+  </div>
+  <p class="note">高亮的三个层次必须能同时成立：<b>语法</b>用色相区分（文字仍是 <code>--ink</code>）、<b>结构块</b>用极淡底色 + 左侧竖条、<b>当前行</b>用最淡的底色。任何一层都不改变字宽与行高，因此不会影响滚动几何。</p>
+
+  <h3>现状 → 目标（同一片段对比）</h3>
+  <div class="two-col">
+    <div class="mock">
+      <div class="mock-bar"><b>现状</b><span>纯 textarea</span></div>
+      <div class="mock-code mock-plain">## 1.1 研究背景
+
+&gt; 排版工具的差异不在功能多少。
+
+- 结构角色化：`heading.1`</div>
+    </div>
+    <div class="mock">
+      <div class="mock-bar"><b>目标</b><span>语法 + 结构高亮</span></div>
+      <div class="mock-code"><span class="sy-h"><span class="sy-mark">##</span> 1.1 研究背景</span>
+
+<span class="active-block"><span class="sy-mark">&gt;</span> <span class="sy-quote">排版工具的差异不在功能多少。</span></span>
+
+<span class="sy-list">-</span> 结构角色化：<span class="sy-code">`heading.1`</span></div>
+    </div>
+  </div>
+
+  <h3>建议调色板</h3>
+  <table>
+    <thead><tr><th>变量</th><th>色值</th><th>用途</th><th>备注</th></tr></thead>
+    <tbody>
+      <tr><td><code>--syn-heading</code></td><td><span class="swatch" style="background:#1d4ed8"></span>#1d4ed8</td><td>标题文字（不含 <code>#</code>）</td><td>与 <code>--accent</code> 同族但更深，白底对比度约 6:1</td></tr>
+      <tr><td><code>--syn-mark</code></td><td><span class="swatch" style="background:#a9c6fb"></span>#a9c6fb</td><td><code>#</code>、<code>&gt;</code>、列表符号、围栏标记</td><td>刻意低对比：标记要让位给内容</td></tr>
+      <tr><td><code>--syn-em</code></td><td><span class="swatch" style="background:#7a3ea8"></span>#7a3ea8</td><td><code>**加粗**</code>、<code>*斜体*</code></td><td>紫色系，与蓝色标题不撞</td></tr>
+      <tr><td><code>--syn-code</code></td><td><span class="swatch" style="background:#0f766e"></span>#0f766e</td><td>行内代码与代码块内容</td><td>配 <code>--syn-code-bg</code> (#f1f5f9) 浅底</td></tr>
+      <tr><td><code>--syn-link</code></td><td><span class="swatch" style="background:#0b6bcb"></span>#0b6bcb</td><td>链接文字</td><td>加下划线，URL 部分用 <code>--syn-meta</code> 压暗</td></tr>
+      <tr><td><code>--syn-list</code></td><td><span class="swatch" style="background:#b45309"></span>#b45309</td><td>列表标记 <code>-</code> / <code>1.</code></td><td>暖色，扫读列表时最跳</td></tr>
+      <tr><td><code>--syn-meta</code></td><td><span class="swatch" style="background:#7b879b"></span>#7b879b</td><td>前置元数据、URL、表格竖线</td><td>复用现有 <code>--muted</code>，可整块压到 60% 不透明度</td></tr>
+      <tr><td><code>--syn-sep</code></td><td><span class="swatch" style="background:#c6cedb"></span>#c6cedb</td><td>分隔线、围栏</td><td>复用现有 <code>--line-strong</code></td></tr>
+      <tr><td><code>--accent-soft</code> + <code>--accent</code></td><td><span class="swatch" style="background:#eaf1ff"></span>#eaf1ff / <span class="swatch" style="background:#2f6fed"></span>#2f6fed</td><td>结构块底色 + 左侧竖条</td><td>直接复用既有工作台 token，不新增</td></tr>
+    </tbody>
+  </table>
+  <p class="note"><b>可读性红线：</b>低对比度的颜色只允许用在<b>结构标记</b>（<code>#</code>、<code>-</code>、<code>&gt;</code>、围栏、分隔线）与元数据上；正文与标题文字必须保持高对比（<code>--ink</code> / <code>--syn-heading</code>）。实现时用一条 e2e 断言把「正文文字颜色 = <code>--ink</code>」钉住，防止以后被配色调整带偏。</p>
+
+  <h3>交互细节与边界情况</h3>
+  <table>
+    <thead><tr><th>场景</th><th>期望行为</th></tr></thead>
+    <tbody>
+      <tr><td>窗口变窄 / 拖拽分隔条</td><td>高亮随软换行重排；结构块底色跨行连续（用 <code>box-decoration-break: clone</code> 的等价装饰，避免每行断开成锯齿）</td></tr>
+      <tr><td>文档为空 / 新建</td><td>无 token 时不报错；仅显示光标行底色；<code>roleSpans</code> 为空时结构高亮插件直接返回空装饰集</td></tr>
+      <tr><td>前言未闭合（只有开头 <code>---</code>）</td><td>沿用解析器现状（<code>parseMarkdown</code> 的 BOM/缩进处理已在回归测试里），编辑器只如实上色，不额外猜测</td></tr>
+      <tr><td>极大的代码块（数千行）</td><td>CodeMirror 按视口渲染，只有可见行进 DOM；上色不随文档长度线性变慢</td></tr>
+      <tr><td>草稿异常（localStorage 里的旧会话）</td><td>沿用现有「坏档一律当没有」策略；光标偏移越界时收敛到文档末尾</td></tr>
+      <tr><td>中文输入法组字中</td><td>组合期间不做结构性重排（CodeMirror 原生处理 IME），提交后才触发上层 <code>onChange</code> → 防抖渲染</td></tr>
+      <tr><td>只读/预览模式（<code>viewMode='preview'</code>）</td><td>源码窗格整体不挂载，编辑器实例随组件卸载销毁，不留监听器</td></tr>
+    </tbody>
+  </table>
+
+  <h3>UI 验收口径（可被脚本核对）</h3>
+  <ul>
+    <li>源码容器仍有 <code>.source-pane</code>，可编辑区域暴露 <code>.source-input</code> 类名与 <code>role="textbox"</code>（或编辑器原生等价 ARIA），键盘可达、可 Tab 进入。</li>
+    <li>标题行渲染后含有可判定的高亮标记（例如 <code>.cm-line</code> 内的 token 元素带 <code>--syn-heading</code> 解析后的颜色）。</li>
+    <li>光标进入引用块后，源码中恰好存在 1 个「当前结构块」装饰与 1 个「当前行」装饰。</li>
+    <li>截图存入 <code>e2e/artifacts/</code>（已 gitignore），作为 PR 的视觉证据。</li>
+  </ul>
+</section>
+
+<section id="architecture">
+  <h2><span class="num">7</span>方案与替代</h2>
+
+  <h3>方案对比</h3>
+  <table>
+    <thead><tr><th>方案</th><th>做法</th><th>体积</th><th>工时</th><th>风险</th><th>延伸能力</th><th>与规划一致性</th></tr></thead>
+    <tbody>
+      <tr>
+        <td><b>A. CodeMirror 6（推荐）</b></td>
+        <td>引入 CM6 作为源码区内核，用 Decoration 承载结构高亮</td>
+        <td class="c">新增若干依赖，需实测（见 §10 体积基线）</td>
+        <td class="c">中</td>
+        <td class="c"><span class="risk-md">中</span>：e2e 与滚动几何要重写</td>
+        <td class="c">搜索替换、折叠、行号、多光标、快捷键</td>
+        <td class="c"><span class="pill p3">一致</span> §15 已选型</td>
+      </tr>
+      <tr>
+        <td>B. 自建覆盖层</td>
+        <td>保留 textarea，在其背后贴一层同步滚动的彩色 <code>&lt;pre&gt;</code>（复用 <code>textareaScroll.ts</code> 的镜像思路）</td>
+        <td class="c">≈0（无新依赖）</td>
+        <td class="c">小（1–2 天）</td>
+        <td class="c"><span class="risk-md">中</span>：滚动/换行逐像素对齐脆弱</td>
+        <td class="c">几乎为零，后续能力要推倒重来</td>
+        <td class="c"><span class="pill p2">偏离</span> M2 已定 CM6</td>
+      </tr>
+      <tr>
+        <td>C. Monaco</td>
+        <td>VS Code 内核</td>
+        <td class="c">显著大于 CM6</td>
+        <td class="c">中</td>
+        <td class="c"><span class="risk-lo">低</span>但重</td>
+        <td class="c">强，但对 Markdown 场景过剩</td>
+        <td class="c"><span class="pill p2">偏离</span> 与「体积小」的选型理由冲突</td>
+      </tr>
+      <tr>
+        <td>D. 只做结构高亮</td>
+        <td>维持 textarea，仅用镜像层画当前结构块底色</td>
+        <td class="c">≈0</td>
+        <td class="c">小</td>
+        <td class="c"><span class="risk-lo">低</span>但预算是沉没成本</td>
+        <td class="c">无</td>
+        <td class="c"><span class="pill p2">不完整</span> 用户要的「高亮样式」主要指语法上色</td>
+      </tr>
+    </tbody>
+  </table>
+  <p><b>结论：</b>选 A。B/D 的唯一优势是省 1–2 天，代价是 M2 无论何时开工都要再做一遍，且会把 e2e 改造推迟一次；C 与既定的体积取舍冲突。</p>
+
+  <h3>目标文件结构</h3>
+<pre><code>apps/demo/src/
+  components/
+    SourcePane.tsx            # 改成承载编辑器的壳（保留 .source-pane / .source-input）
+  lib/editor/
+    types.ts                  # SourceEditorHandle 接口（唯一的替换缝）
+    createEditor.ts           # CM6 状态 + 扩展组合 + 受控值同步
+    highlightStyle.ts         # lezer 标签 → var(--syn-*) 的 HighlightStyle
+    roleDecorations.ts        # ViewPlugin：由 roleSpans 生成结构块/当前行装饰
+    scrollSync.ts             # 进度 ↔ scrollTop、滚动事件上报
+    debugHandle.ts            # 仅 DEV：window 上的测试句柄
+  lib/textareaScroll.ts       # 在 PR B 中删除（被 lineBlockAt/coordsAtPos 取代）
+  styles.css                  # 新增 :root 的 --syn-* 与 .cm-* 适配样式
+e2e/
+  lib/editor.mjs              # readSource / setCursor / scrollEditor / typeSource
+  smoke.mjs                   # 15 处断言改用上面的辅助函数</code></pre>
+
+  <h3>接口契约（唯一的替换缝）</h3>
+<pre><code>// apps/demo/src/lib/editor/types.ts
+export interface SourceEditorHandle {
+  /** 读取当前文档文本。 */
+  getValue(): string
+  /** 用外部状态覆盖文档（载入示例 / 新建 / 重命名后回写）。 */
+  setValue(next: string): void
+  /** 移动插入点并把目标位置滚入视口（y 轴策略见 implementationNotes）。 */
+  setCursor(offset: number): void
+  /** 让某个偏移顶到首行，用于大纲跳转。 */
+  revealOffset(offset: number): void
+  /** 读取某偏移相对内容顶部的像素位置，用于大纲当前章节判定。 */
+  offsetTop(offset: number): number
+  /** 当前滚动进度 0–1。 */
+  getScrollRatio(): number
+  /** 按进度设置滚动位置（预览 → 编辑器）。 */
+  setScrollRatio(ratio: number): void
+  /** 注册滚动回调，返回解绑函数。 */
+  onScroll(listener: (ratio: number) => void): () => void
+  focus(): void
+}</code></pre>
+  <p class="note">PR A 只新增这层接口并用现有 textarea 实现它，<b>行为零变化</b>；PR B 换成 CodeMirror 实现，上层 <code>App.tsx</code> 完全不动。这就是把「6 处强耦合」变成「1 个契约」的全部意义。</p>
+
+  <h3>三条架构约束的核对</h3>
+  <table>
+    <thead><tr><th>约束</th><th>本方案</th><th>判定</th></tr></thead>
+    <tbody>
+      <tr><td>1. <code>core</code> 不依赖 UI 与宿主</td><td>CodeMirror 是 DOM 库，只进 <code>apps/demo</code>；<code>core</code> 的 <code>collectRoleSpans</code> 照旧只输出纯数据</td><td class="c"><span class="risk-lo">保持</span></td></tr>
+      <tr><td>2. 样式模型只描述数据，不含 CSS 字符串</td><td>高亮配色放工作台 CSS 变量，不进 <code>theme-schema</code>，<code>schemaVersion</code> 不动</td><td class="c"><span class="risk-lo">保持</span></td></tr>
+      <tr><td>3. 预览与导出共用 <code>build()</code> 产出的 HTML</td><td>只换源码窗格，<code>build()</code>、<code>compileCss</code>、预览注入全部不碰</td><td class="c"><span class="risk-lo">保持</span></td></tr>
+    </tbody>
+  </table>
+  <p class="note">安全边界同样守住：CodeMirror 把文档内容作为文本节点渲染（不写 <code>innerHTML</code>），因此<code>&lt;script&gt;</code> 之类的原文只会被显示，不会被执行；预览侧的转义与 CSP 策略不在本次改动范围内。</p>
+</section>
+
+<section id="model">
+  <h2><span class="num">8</span>模型与依赖影响</h2>
+
+  <h3>数据模型影响：无</h3>
+  <ul>
+    <li><code>StyleTheme</code> 结构不变，<code>schemaVersion</code> 不变，<code>migrateTheme</code> 不需要新分支；已导出的 <code>*.stylemd.json</code> 与导入的样式包不受影响。</li>
+    <li>唯一新增的「模型」是编辑器高亮配色器，它是 CSS 变量集合，属于工作台外观，不是文档数据。</li>
+  </ul>
+
+  <h3>新增依赖（全部 MIT，PR B 引入）</h3>
+  <table>
+    <thead><tr><th>包</th><th>用途</th><th>备注</th></tr></thead>
+    <tbody>
+      <tr><td><code>@codemirror/state</code> / <code>@codemirror/view</code></td><td>编辑器状态与视图</td><td>核心两件</td></tr>
+      <tr><td><code>@codemirror/commands</code></td><td>默认键位与撤销栈</td><td><code>defaultKeymap</code> / <code>history</code> / <code>historyKeymap</code></td></tr>
+      <tr><td><code>@codemirror/language</code></td><td><code>HighlightStyle</code> / <code>syntaxHighlighting</code></td><td>高亮挂载点</td></tr>
+      <tr><td><code>@codemirror/lang-markdown</code></td><td>Markdown 语法树</td><td>会带上 <code>@lezer/markdown</code> 与 <code>@codemirror/lang-html</code>（用于内嵌 HTML 块）</td></tr>
+      <tr><td><code>@lezer/highlight</code></td><td>标签定义</td><td>与 <code>HighlightStyle</code> 配套</td></tr>
+    </tbody>
+  </table>
+  <p class="note">代码块内的分语言高亮（<code>codeLanguages</code> + 具体语言包）本次不引入；围栏内容先按「代码」统一上色，避免一次性拉入多种语言包。安装后必须跑 <code>npm.cmd audit</code>，保持仓库「0 个已知漏洞」的基线。</p>
+
+  <h3>构建与环境影响</h3>
+  <ul>
+    <li>产物只增大 <code>apps/demo/dist</code>；<code>packages/*</code> 与 CLI 不受影响（CLI 不经过 demo 打包）。</li>
+    <li>无新增环境变量、无服务端配置、无迁移脚本。演示与 e2e 的启动命令不变。</li>
+    <li>体积基线（来自 2026-10-01 审查）：JS 1256.98 kB / gzip 267.33 kB，CSS 6.41 kB；PR B 必须重新测量并记录差值，而不是凭估计写进 PR。</li>
+  </ul>
+</section>
+
+<section id="phases">
+  <h2><span class="num">9</span>分阶段实施</h2>
+  <p class="sub">P0 可与 P1 并行；P2 依赖 P1；P3 贯穿 P1–P2 但收口在最后；P4 是清理，必须在 P3 之后。</p>
+
+  <h3>P0 · 依赖与基线（并行起点）</h3>
+  <ul>
+    <li>记录改动前基线：<code>npm.cmd test</code>、<code>npm.cmd run typecheck</code>、<code>npm.cmd run build</code>（记 kB）、<code>node e2e/smoke.mjs</code>，把数字写进 PR 描述。</li>
+    <li>安装 CodeMirror 6 系列依赖并锁版本；跑 <code>npm.cmd audit</code>。</li>
+    <li><b>验收：</b>四项命令全部通过，且 <code>npm.cmd run build</code> 的产物体积与基线一致（此时还没引用 CM，体积不该变）。</li>
+  </ul>
+
+  <h3>P1 · 行为等价的编辑器接入（PR A + PR B 的主体）</h3>
+  <ol>
+    <li>新增 <code>lib/editor/types.ts</code> 定义 <code>SourceEditorHandle</code>。</li>
+    <li>用 textarea 实现该句柄，把 <code>App.tsx</code> 里 6 处 <code>HTMLTextAreaElement</code> 直连改成调句柄方法（<b>纯重构</b>，行为不变）。</li>
+    <li>跑全部测试，必须全绿——这一步是分两步策略的价值所在。</li>
+    <li>实现 <code>createEditor.ts</code>：CM6 状态、受控值同步（外部 <code>value</code> 变化 → 重建/派发事务，注意避免与用户输入形成回环）、<code>updateListener</code> 上报文本与光标偏移。</li>
+    <li>实现 <code>scrollSync.ts</code>：<code>.cm-scroller</code> 的滚动事件 → 进度上报；进度 → <code>scrollTop</code> 写回；沿用既有的「反向同步期间不回发」防回环标记。</li>
+    <li>实现 <code>offsetTop</code> 与 <code>revealOffset</code>：用 CodeMirror 原生几何（<code>lineBlockAt</code> / <code>coordsAtPos</code> 一族）替代镜像测量；具体 API 名与选项以锁定的版本为准，实现时对照该版本类型定义。</li>
+    <li><code>SourcePane.tsx</code> 换成承载编辑器的壳，保留 <code>.source-pane</code> / <code>.source-input</code> 类名与既有 flex/宽度行为。</li>
+    <li>样式对齐：字体、字号 12.5px、行高 1.75、内边距 12/14 与今天的 <code>.source-input</code> 逐项一致，保证切换前后文本排版一致（否则滚动比例与大纲定位都会漂）。</li>
+    <li><b>验收：</b>改造后的 e2e 全绿；文本排版与旧版逐像素接近（截图对比 <code>e2e/artifacts/</code>）；此时编辑器除字体外<b>还没有</b>高亮配色，便于单独评审「替换是否等价」。</li>
+    <li><b>回滚：</b>revert PR B 即回到 textarea 句柄实现，PR A 的抽象可保留。</li>
+  </ol>
+
+  <h3>P2 · 高亮层</h3>
+  <ol>
+    <li>在 <code>styles.css</code> 的 <code>:root</code> 增加 <code>--syn-*</code> 变量（数值见 §6 调色板）。</li>
+    <li><code>highlightStyle.ts</code>：用 <code>HighlightStyle.define</code> 把 lezer 标签映射到上述变量，覆盖标题 1–6、强调、加粗、行内代码、围栏代码、链接与 URL、引用、列表标记、分隔线、前置元数据（<code>tags.meta</code> 一类）与未定标签（不设色 → 保持 <code>--ink</code>）。</li>
+    <li><code>roleDecorations.ts</code>：ViewPlugin 接收当前 <code>roleSpans</code> 与光标偏移，产出两类装饰——包含光标的那个跨度（结构块）+ 光标所在行。跨度选择复用 <code>roleAtOffset</code> 的判定逻辑，不另写一套。</li>
+    <li>把 <code>cssRoleName</code> 的产出挂到装饰类名上（如 <code>cm-role-heading-1</code>），为将来的「按角色定制编辑器高亮」留钩子，但本次不为每个角色单独配色。</li>
+    <li><b>验收：</b>§6 的 UI 验收口径四条全部可脚本核对；正文文字颜色仍等于 <code>--ink</code>；Cursor 进入引用块后装饰数量为 1+1。</li>
+    <li><b>回滚：</b>高亮是纯增量，摘掉 HighlightStyle / ViewPlugin 两个扩展即回到 P1 状态。</li>
+  </ol>
+
+  <h3>P3 · 测试与证据</h3>
+  <ol>
+    <li>新增 <code>e2e/lib/editor.mjs</code> 辅助函数；把 <code>smoke.mjs</code> 的 15 处 <code>.source-input</code> 断言逐条迁移（读值、写值、设光标、设滚动位置）。</li>
+    <li>新增断言：语法 token 存在且颜色来自 <code>--syn-heading</code>；结构块装饰数量正确；大纲跳转后目标行顶到首行；滚动同步仍双向；会话恢复光标位置不变。</li>
+    <li>补：构建体积差值、50 页级文档的输入延迟与滚动流畅度手工记录（可用 <code>examples/sample-thesis.md</code> 复制放大为长文档）。</li>
+    <li>截图归档到 <code>e2e/artifacts/</code> 并附在 PR（仓库规范要求 UI 改动附截图）。</li>
+    <li><b>验收：</b><code>npm.cmd test</code> + <code>npm.cmd run typecheck</code> + <code>npm.cmd run build</code> + <code>node e2e/smoke.mjs</code> + <code>node e2e/export-check.mjs</code> 全绿，数字进 PR。</li>
+  </ol>
+
+  <h3>P4 · 清理与文档</h3>
+  <ul>
+    <li>删除 <code>lib/textareaScroll.ts</code>（若仍有其他调用点，先确认再删）。</li>
+    <li>更新 README 的「已实现」清单：把「源码编辑器语法高亮 + 当前结构高亮」写进已实现，并把「渲染侧代码高亮（Shiki）」继续明确留在未实现。</li>
+    <li>在 <code>docs/plans/</code> 追加一页结论记录（沿用 M0 结论的写法：结论表 + 关键发现 + 可复现命令）。</li>
+  </ul>
+</section>
+
+<section id="qa">
+  <h2><span class="num">10</span>验证矩阵</h2>
+  <table>
+    <thead><tr><th>层级</th><th>验证内容</th><th>手段</th><th>通过标准</th></tr></thead>
+    <tbody>
+      <tr><td>单元</td><td>核心库与样式模型不受影响</td><td><code>npm.cmd test</code>（8 文件 / 63 项）</td><td>数量不减少、全绿；如新增纯函数（如偏移换算）另加用例</td></tr>
+      <tr><td>类型</td><td>编辑器句柄与 CM 扩展的类型正确</td><td><code>npm.cmd run typecheck</code></td><td>strict 模式零错误</td></tr>
+      <tr><td>构建</td><td>体积增幅可接受、无新增漏洞</td><td><code>npm.cmd run build</code> + <code>npm.cmd audit</code></td><td>记录 min/gzip 差值；audit 0 漏洞；差值超预算时按 §12 处置</td></tr>
+      <tr><td>端到端</td><td>编辑→预览、光标→角色、大纲→跳转、滚动同步、会话恢复、视图模式、拖拽宽度</td><td><code>node e2e/smoke.mjs</code></td><td>全部通过（含迁移后的 15 处旧断言）</td></tr>
+      <tr><td>端到端</td><td>导出路径未被牵连</td><td><code>node e2e/export-check.mjs</code></td><td>页数 / 页边距元素数与基线一致</td></tr>
+      <tr><td>视觉</td><td>高亮配色与 §6 线框一致、正文对比度未被削弱</td><td>截图 + <code>e2e/artifacts/</code></td><td>四条 UI 验收口径全中；正文色 = <code>--ink</code></td></tr>
+      <tr><td>性能</td><td>输入延迟与滚动流畅度</td><td>样例文档放大到 50 页量级后手工 + 脚本记录</td><td>输入延迟 &lt; 50ms、预览刷新 ≤ 300ms（规划 M2 口径）</td></tr>
+      <tr><td>可访问</td><td>键盘可达、ARIA 角色、焦点可见</td><td>Tab 进入源码区；检查 <code>role</code> / <code>aria-label</code></td><td>不因换内核而丢失「Markdown 源」的可访问名</td></tr>
+      <tr><td>降级</td><td>编辑器初始化失败时页面不白屏</td><td>人为抛错（临时注入）</td><td>显示可读错误并保留预览可用；复用既有的「渲染异常不崩预览」策略</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<section id="dod">
+  <h2><span class="num">11</span>验收与完成定义</h2>
+  <ul>
+    <li>源码区由 CodeMirror 6 承载，Markdown 语法按 §6 调色板上色，配色全部来自 <code>:root</code> 的 <code>--syn-*</code>。</li>
+    <li>光标所在结构块与当前行在源码里可见地高亮；光标在元数据时只保留当前行。</li>
+    <li>既有能力零回归：光标定位、双向滚动同步、大纲当前章节高亮、大纲跳转、会话恢复、字数统计、视图模式、两条拖拽条、文件菜单全部正常。</li>
+    <li><code>packages/*</code> 无改动；<code>schemaVersion</code> 无改动；<code>build()</code> 输出无改动（用 <code>export-check</code> 的页数与体积核对证明）。</li>
+    <li>五条命令全绿并附数字：<code>npm.cmd test</code>、<code>npm.cmd run typecheck</code>、<code>npm.cmd run build</code>、<code>node e2e/smoke.mjs</code>、<code>node e2e/export-check.mjs</code>。</li>
+    <li>PR 内含 UI 截图、体积前后对比、15 处 e2e 断言的迁移说明。</li>
+    <li>README 与 <code>docs/plans/</code> 结论页同步更新。</li>
+  </ul>
+</section>
+
+<section id="risks">
+  <h2><span class="num">12</span>风险与缓解</h2>
+  <table>
+    <thead><tr><th>风险</th><th>概率</th><th>影响</th><th>缓解</th></tr></thead>
+    <tbody>
+      <tr>
+        <td>滚动几何改动导致大纲高亮 / 双向同步回归（最近三次提交刚做过这块）</td>
+        <td class="c"><span class="risk-hi">高</span></td><td class="c"><span class="risk-hi">高</span></td>
+        <td>P1 先做行为等价重构并保留旧断言；「顶到首行」用既有 e2e 用例逐条对照（滚到顶/滚到底/拖拽宽度后重算）</td>
+      </tr>
+      <tr>
+        <td>e2e 15 处断言迁移被低估，PR 迟迟不能全绿</td>
+        <td class="c"><span class="risk-hi">高</span></td><td class="c"><span class="risk-md">中</span></td>
+        <td>先写 <code>e2e/lib/editor.mjs</code> 统一出入口，再逐条替换；DEV 专用 <code>window</code> 句柄提供读写与设光标能力</td>
+      </tr>
+      <tr>
+        <td>受控值回环：编辑器 → onChange → state → 编辑器重建，导致光标跳动或输入丢失</td>
+        <td class="c"><span class="risk-md">中</span></td><td class="c"><span class="risk-hi">高</span></td>
+        <td>受控同步只在「外部值与编辑器当前值不同」时派发最小事务；用 <code>ChangeSet</code> 差量而非整篇替换；IME 组合期间不重建</td>
+      </tr>
+      <tr>
+        <td>字体内核差异导致文本排版变化，滚动比例与大纲定位集体漂移</td>
+        <td class="c"><span class="risk-md">中</span></td><td class="c"><span class="risk-md">中</span></td>
+        <td>P1 阶段逐项对齐 font-family / size / line-height / padding；用切换前后截图 + 首行/末行位置断言兜住</td>
+      </tr>
+      <tr>
+        <td>体积增幅超出预期</td>
+        <td class="c"><span class="risk-md">中</span></td><td class="c"><span class="risk-lo">低</span></td>
+        <td>先测再评：若 min 增幅明显超出预算，评估按需加载编辑器（动态 import）或缩减语言包（只保留 Markdown）</td>
+      </tr>
+      <tr>
+        <td>高亮配色削弱可读性或可访问性</td>
+        <td class="c"><span class="risk-lo">低</span></td><td class="c"><span class="risk-md">中</span></td>
+        <td>正文不上色（Q4）；结构标记才允许低对比；用断言钉住正文颜色；调色板集中在一处便于评审时整体调整</td>
+      </tr>
+      <tr>
+        <td>新依赖引入已知漏洞或不可再分发许可</td>
+        <td class="c"><span class="risk-lo">低</span></td><td class="c"><span class="risk-md">中</span></td>
+        <td>安装后跑 <code>npm.cmd audit</code>；核对许可证（CM6 与 lezer 均为 MIT）后再提交</td>
+      </tr>
+    </tbody>
+  </table>
+</section>
+
+<section id="repo">
+  <h2><span class="num">13</span>仓库影响清单</h2>
+  <table>
+    <thead><tr><th>文件</th><th>动作</th><th>阶段</th></tr></thead>
+    <tbody>
+      <tr><td><code>apps/demo/package.json</code></td><td>新增 CodeMirror 6 依赖</td><td class="c">P0</td></tr>
+      <tr><td><code>package-lock.json</code></td><td>随之更新</td><td class="c">P0</td></tr>
+      <tr><td><code>apps/demo/src/lib/editor/types.ts</code></td><td>新增 <code>SourceEditorHandle</code></td><td class="c">P1</td></tr>
+      <tr><td><code>apps/demo/src/lib/editor/createEditor.ts</code></td><td>新增 CM6 装配</td><td class="c">P1</td></tr>
+      <tr><td><code>apps/demo/src/lib/editor/scrollSync.ts</code></td><td>新增滚动同步</td><td class="c">P1</td></tr>
+      <tr><td><code>apps/demo/src/lib/editor/highlightStyle.ts</code></td><td>新增语法高亮样式</td><td class="c">P2</td></tr>
+      <tr><td><code>apps/demo/src/lib/editor/roleDecorations.ts</code></td><td>新增结构高亮插件</td><td class="c">P2</td></tr>
+      <tr><td><code>apps/demo/src/lib/editor/debugHandle.ts</code></td><td>新增（仅 DEV）测试句柄</td><td class="c">P2</td></tr>
+      <tr><td><code>apps/demo/src/components/SourcePane.tsx</code></td><td>改写为编辑器壳</td><td class="c">P1</td></tr>
+      <tr><td><code>apps/demo/src/App.tsx</code></td><td>6 处 textarea 直连 → 句柄调用</td><td class="c">P1</td></tr>
+      <tr><td><code>apps/demo/src/styles.css</code></td><td>新增 <code>--syn-*</code> 与编辑器适配样式</td><td class="c">P1 / P2</td></tr>
+      <tr><td><code>apps/demo/src/lib/textareaScroll.ts</code></td><td>删除</td><td class="c">P4</td></tr>
+      <tr><td><code>e2e/lib/editor.mjs</code></td><td>新增辅助函数</td><td class="c">P3</td></tr>
+      <tr><td><code>e2e/smoke.mjs</code></td><td>15 处断言迁移 + 新增高亮断言</td><td class="c">P3</td></tr>
+      <tr><td><code>README.md</code>、<code>docs/plans/</code></td><td>同步「已实现 / 未实现」与结论页</td><td class="c">P4</td></tr>
+      <tr><td><code>packages/**</code></td><td><b>无改动</b></td><td class="c">—</td></tr>
+    </tbody>
+  </table>
+</section>
+
+<section id="handoff">
+  <h2><span class="num">14</span>实施交接</h2>
+  <p><b>是否可以直接开工：</b>可以，前提是 Q1 与 Q2 按建议确认（分两步迁移、语法与结构高亮同批交付）。Q3、Q4 有明确的推荐默认值，若不反对即按建议执行。</p>
+
+  <h3>第一步的命令与预期</h3>
+<pre><code>npm.cmd install            # 引入 CodeMirror 6 依赖
+npm.cmd audit              # 期望：0 个已知漏洞
+npm.cmd test               # 期望：8 文件 / 63 项全通过
+npm.cmd run typecheck      # 期望：strict 通过
+npm.cmd run build          # 记录 min / gzip 体积基线
+node e2e/smoke.mjs         # 期望：全部通过（改造前基线）</code></pre>
+
+  <h3>提交切分建议</h3>
+  <ul>
+    <li><b>PR A</b>（纯重构）：<code>refactor: 抽出源码编辑器句柄，textarea 直连改走接口</code>——不含新依赖，测试全绿。</li>
+    <li><b>PR B</b>（替换 + 高亮）：<code>feat: 源码编辑器改用 CodeMirror 6 并加 Markdown 语法与结构高亮</code>——含依赖、样式变量、e2e 迁移与截图。</li>
+    <li>若时间紧不得不合并为一个 PR，则<b>e2e 辅助函数必须先落地</b>，否则无法区分回归来源。</li>
+  </ul>
+
+  <h3>开工前需要确认的三件事</h3>
+  <ol>
+    <li>Q1：是否接受「先抽象、再替换」的两步走（约多半天，换回清晰的回滚点）。</li>
+    <li>Q2：结构高亮是否与语法高亮同批（建议同批）。</li>
+    <li>是否同意「正文不上色、配色归工作台」这两条默认（Q3 / Q4）。</li>
+  </ol>
+</section>
+</main>
+</div>
+</body>
+</html>
