@@ -78,6 +78,24 @@ export function App() {
   const iframeRef = useRef<HTMLIFrameElement>(null)
   const sourceRef = useRef<HTMLTextAreaElement>(null)
   const scrollRatioRef = useRef(0)
+  /** 正在把预览的滚动同步回编辑器；这期间的编辑器 scroll 事件不再回发给预览，免得两边互相推。 */
+  const syncingFromPreviewRef = useRef(false)
+
+  const applyPreviewScroll = useCallback((ratio: number) => {
+    const textarea = sourceRef.current
+    if (!textarea) return
+    const max = textarea.scrollHeight - textarea.clientHeight
+    if (max <= 0) return
+    const clamped = Math.min(Math.max(0, ratio), 1)
+    syncingFromPreviewRef.current = true
+    textarea.scrollTop = clamped * max
+    scrollRatioRef.current = clamped
+    window.requestAnimationFrame(() =>
+      window.requestAnimationFrame(() => {
+        syncingFromPreviewRef.current = false
+      }),
+    )
+  }, [])
 
   // 恢复上次的光标：把插入点放回去，并把编辑器滚到那一行（预览等分页完成后跟上）。
   useEffect(() => {
@@ -141,12 +159,19 @@ export function App() {
       setPagedStatus(data.status)
       setReadyId(previewId)
     }
+    const receiveScroll = (event: MessageEvent) => {
+      const data = event.data
+      if (event.source !== iframeRef.current?.contentWindow || data?.type !== 'stylemd:scroll-report' || data.id !== previewId) return
+      if (typeof data.ratio === 'number') applyPreviewScroll(data.ratio)
+    }
     window.addEventListener('message', receive)
+    window.addEventListener('message', receiveScroll)
     return () => {
       window.clearTimeout(timer)
       window.removeEventListener('message', receive)
+      window.removeEventListener('message', receiveScroll)
     }
-  }, [previewId])
+  }, [applyPreviewScroll, previewId])
 
   useEffect(() => {
     iframeRef.current?.contentWindow?.postMessage({ type: 'stylemd:zoom', id: previewId, zoom }, '*')
@@ -190,6 +215,7 @@ export function App() {
 
   /** 编辑器滚动 → 预览按进度跟着走。 */
   const handleSourceScroll = useCallback((ratio: number) => {
+    if (syncingFromPreviewRef.current) return
     scrollRatioRef.current = ratio
     iframeRef.current?.contentWindow?.postMessage({ type: 'stylemd:scroll', id: previewId, ratio }, '*')
   }, [previewId])

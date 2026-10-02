@@ -350,13 +350,33 @@ async function main() {
       `${Math.round(editorBefore)}px → ${Math.round(editorAfter)}px`,
     )
 
-    // 4i. 编辑器滚动会把进度发给预览，预览跟着滚
+    // 4i. 双向滚动同步：编辑器 → 预览
     await page.locator('.source-input').evaluate((element) => { element.scrollTop = element.scrollHeight })
     const previewScroll = await until(async () => {
       const top = await preview.locator('html').evaluate((element) => element.scrollTop || element.parentElement?.scrollTop || 0)
       return top > 0 ? top : 0
     }, { label: '预览跟随滚动', timeout: 10000 })
     check('编辑器滚动时预览跟随', true, `预览 scrollTop=${Math.round(previewScroll)}`)
+
+    // 4i-2. 反向：在预览里滚鼠标滚轮，编辑器要跟着走
+    await page.locator('.source-input').evaluate((element) => { element.scrollTop = 0 })
+    await page.waitForTimeout(400)
+    const previewBox = await page.locator('.preview-pane').boundingBox()
+    await page.mouse.move(previewBox.x + previewBox.width / 2, previewBox.y + previewBox.height / 2)
+    await page.mouse.wheel(0, 600)
+    const editorAfterWheel = await until(
+      async () => {
+        const top = await page.locator('.source-input').evaluate((element) => Math.round(element.scrollTop))
+        return top > 0 ? top : 0
+      },
+      { label: '预览滚动时编辑器跟随', timeout: 10000 },
+    )
+    const previewAfterWheel = await preview.locator('html').evaluate((element) => Math.round(element.scrollTop))
+    check(
+      '预览滚动时编辑器跟随（双向同步）',
+      editorAfterWheel > 0 && previewAfterWheel > 0,
+      `预览 ${previewAfterWheel}px → 编辑器 ${editorAfterWheel}px`,
+    )
 
     // 4j. 三个展示模式
     await page.getByRole('button', { name: '仅展示编辑器' }).click()

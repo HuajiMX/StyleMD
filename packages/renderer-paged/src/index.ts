@@ -57,6 +57,7 @@ export function injectPagedPolyfill(html: string, polyfillSource: string, messag
   const lifecycle = `
 window.__stylemdPaged = { status: 'pending', pages: 0 };
 window.__stylemdZoom = null;
+var applyingScroll = false;
 function report(status, pages) {
   window.__stylemdPaged = { status: status, pages: pages };
   if (window.parent !== window) window.parent.postMessage({ type: 'stylemd:pagination', id: ${id}, status: status, pages: pages }, '*');
@@ -76,13 +77,24 @@ window.addEventListener('message', function(event) {
   // 编辑器滚动时跟着走：按比例定位，源文与分页后的页面对不上行，只能对进度。
   if (event.data.type === 'stylemd:scroll' && typeof event.data.ratio === 'number') {
     var max = Math.max(0, document.documentElement.scrollHeight - window.innerHeight);
+    applyingScroll = true;
     window.scrollTo(0, Math.max(0, Math.min(1, event.data.ratio)) * max);
+    // 等两帧再放行上报：scroll 事件是异步派发的，过早清标记会把同步滚当成用户滚动。
+    requestAnimationFrame(function() { requestAnimationFrame(function() { applyingScroll = false; }); });
   }
   if (event.data.type === 'stylemd:zoom' && typeof event.data.zoom === 'number') {
     window.__stylemdZoom = Math.min(2, Math.max(0.4, event.data.zoom));
     applyZoom();
   }
 });
+// 预览自己滚动时把进度报给宿主，让编辑器跟着走（双向同步）。
+// 程序化滚动（上面的 stylemd:scroll）要跳过上报，否则两边会互相推着抖。
+window.addEventListener('scroll', function() {
+  if (applyingScroll) return;
+  var max = Math.max(0, document.documentElement.scrollHeight - window.innerHeight);
+  var ratio = max > 0 ? window.scrollY / max : 0;
+  if (window.parent !== window) window.parent.postMessage({ type: 'stylemd:scroll-report', id: ${id}, ratio: ratio }, '*');
+}, { passive: true });
 if (window.parent !== window) document.addEventListener('click', function(event) {
   if (event.target.closest && event.target.closest('a')) event.preventDefault();
 });
