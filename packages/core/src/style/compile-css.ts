@@ -140,17 +140,36 @@ function roleBlock(style: ComputedRoleStyle): string {
   return blocks.join('\n')
 }
 
-function resolvePageSize(styles: ComputedStyles): string {
+/** 默认页边距；页边距盒与内容宽度都按它兜底，别在别处另写一份。 */
+const DEFAULT_PAGE_MARGIN_MM = { top: 25, right: 22, bottom: 25, left: 25 }
+
+function resolvePageDimensionsMm(styles: ComputedStyles): { widthMm: number; heightMm: number } {
   const size = styles.page.size ?? 'A4'
   if (typeof size === 'string') {
     const dimensions = PAGE_SIZES_MM[size] ?? PAGE_SIZES_MM['A4']!
-    const oriented =
-      styles.page.orientation === 'landscape'
-        ? { widthMm: dimensions.heightMm, heightMm: dimensions.widthMm }
-        : dimensions
-    return `${oriented.widthMm}mm ${oriented.heightMm}mm`
+    return styles.page.orientation === 'landscape'
+      ? { widthMm: dimensions.heightMm, heightMm: dimensions.widthMm }
+      : dimensions
   }
-  return styles.page.orientation === 'landscape' ? `${size.heightMm}mm ${size.widthMm}mm` : `${size.widthMm}mm ${size.heightMm}mm`
+  return styles.page.orientation === 'landscape'
+    ? { widthMm: size.heightMm, heightMm: size.widthMm }
+    : { widthMm: size.widthMm, heightMm: size.heightMm }
+}
+
+function resolvePageSize(styles: ComputedStyles): string {
+  const page = resolvePageDimensionsMm(styles)
+  return `${page.widthMm}mm ${page.heightMm}mm`
+}
+
+/**
+ * 页面内容宽度（页宽减左右页边距），以 CSS 变量暴露。
+ * Paged.js 按页把表格切成多个 <table>，每片只按自己那部分内容算列宽，跨页就会对不齐；
+ * 分页层要在分页前用它把列宽定死，所以这里必须给一个可测量的值，不能让宿主去猜。
+ */
+function pageContentWidth(styles: ComputedStyles): string {
+  const margin = styles.page.marginMm ?? DEFAULT_PAGE_MARGIN_MM
+  const page = resolvePageDimensionsMm(styles)
+  return `calc(${page.widthMm}mm - ${margin.left}mm - ${margin.right}mm)`
 }
 
 function furnitureValue(text: string, options: CompileCssOptions): string {
@@ -205,7 +224,7 @@ function furnitureBlock(
 }
 
 function pageBlock(styles: ComputedStyles, options: CompileCssOptions): string {
-  const margin = styles.page.marginMm ?? { top: 25, right: 22, bottom: 25, left: 25 }
+  const margin = styles.page.marginMm ?? DEFAULT_PAGE_MARGIN_MM
   const lines = [
     `size: ${resolvePageSize(styles)};`,
     `margin: ${margin.top}mm ${margin.right}mm ${margin.bottom}mm ${margin.left}mm;`,
@@ -247,11 +266,15 @@ export function compileCss(styles: ComputedStyles, options: CompileCssOptions = 
       'blockquote > p[data-role="body-text"] { font: inherit; color: inherit; text-indent: inherit; }',
       'p[data-role="image"] { text-align: center; }',
       'table[data-role="table"] { border-collapse: collapse; max-width: 100%; }',
+      // 表头是本行的最后一行时 Paged.js 会把它单独留在上一页页脚，下一行又整片挪到下一页，
+      // 只有表头的分片没有表体撑宽，列宽会和续页对不上。宁可整张表换页，也不留孤行表头。
+      'table[data-role="table"] thead { break-after: avoid; }',
       '[data-role="table-header"], [data-role="table-cell"] { vertical-align: top; }',
     ].join('\n'),
   )
 
   if (options.includePage !== false) {
+    chunks.push(`:root { --stylemd-page-content-width: ${pageContentWidth(styles)}; }`)
     chunks.push(pageBlock(styles, options))
   }
 

@@ -98,12 +98,149 @@ window.addEventListener('scroll', function() {
 if (window.parent !== window) document.addEventListener('click', function(event) {
   if (event.target.closest && event.target.closest('a')) event.preventDefault();
 });
+// 跨页表格：Paged.js 把一张表按页切成多个独立 <table>，每片只按自己那部分内容算列宽，跨页就对不齐。
+// 注意不能等分页完再统一列宽：那会把行重新排高、把内容挤出页面（实测连表格下框线都会跟着跑出页外）。
+// 必须在分页之前按页面内容宽度把列宽定死，让 Paged.js 从一开始就按最终几何分页。
+function pageContentWidth() {
+  var value = getComputedStyle(document.documentElement).getPropertyValue('--stylemd-page-content-width');
+  if (!value || !value.trim()) return 0;
+  var probe = document.createElement('div');
+  probe.setAttribute('style', 'position:absolute;left:-10000px;top:0;visibility:hidden;width:' + value.trim() + ';');
+  document.body.appendChild(probe);
+  var width = probe.offsetWidth;
+  probe.parentNode.removeChild(probe);
+  return width;
+}
+function measureColumnWidths(table) {
+  var columnCount = 0;
+  for (var r = 0; r < table.rows.length; r++) columnCount = Math.max(columnCount, table.rows[r].cells.length);
+  var firstRow = table.rows[0];
+  var widths = [];
+  for (var c = 0; c < columnCount; c++) {
+    var cell = firstRow && firstRow.cells[c];
+    widths.push(cell ? cell.offsetWidth : 0);
+  }
+  return widths;
+}
+// 分页前记下每张表的表头：Paged.js 复制出的续页分片只带行、不带 <thead>，靠它补回去。
+var splitTableHeaders = {};
+
+function stabilizeTableLayouts() {
+  var width = pageContentWidth();
+  if (!width) return;
+  var tables = document.querySelectorAll('table[data-role="table"]');
+  for (var i = 0; i < tables.length; i++) {
+    var table = tables[i];
+    var key = table.getAttribute('data-stylemd-table') || 'stylemd-table-' + i;
+    table.setAttribute('data-stylemd-table', key);
+    // 量的是「正常文档流里、和页面内容一样宽」的同一张表的副本，量完就扔；直接量分页后的碎框不可信。
+    var host = document.createElement('div');
+    host.setAttribute('style', 'position:absolute;left:-10000px;top:0;visibility:hidden;width:' + width + 'px;');
+    var probe = table.cloneNode(true);
+    host.appendChild(probe);
+    document.body.appendChild(host);
+    var widths = measureColumnWidths(probe);
+    host.parentNode.removeChild(host);
+    var total = 0;
+    for (var w = 0; w < widths.length; w++) total += widths[w];
+    if (!total) continue;
+    table.style.tableLayout = 'fixed';
+    table.style.width = total + 'px';
+    // 分片时 Paged.js 只浅拷贝 <table>（<colgroup> 不会跟到续页），行却是深拷贝，
+    // 所以列宽写在单元格上：续页分片自带同一组列宽，列位置才能和第一片对齐。
+    for (var r = 0; r < table.rows.length; r++) {
+      var cells = table.rows[r].cells;
+      for (var c = 0; c < cells.length && c < widths.length; c++) cells[c].style.width = widths[c] + 'px';
+    }
+    // 表头要等列宽写进单元格之后再存：补到续页时它就是该片的第一行，列宽靠它传给整片。
+    var head = table.querySelector(':scope > thead');
+    if (head) splitTableHeaders[key] = head.outerHTML;
+  }
+}
+/**
+ * Paged.js 在排版途中复制出的续页分片只有行、没有表头。等它被渲染进页面时立刻补上，
+ * 这一页随后的溢出检测就把表头高度一起算了进去——分页定稿后再补是把表头顶出页面，这里是让 Paged.js 自己把行往后挪。
+ */
+function installSplitTableHeaderHook() {
+  var hooks = window.PagedPolyfill && window.PagedPolyfill.chunker && window.PagedPolyfill.chunker.hooks;
+  if (!hooks || !hooks.renderNode || !hooks.renderNode.register) return;
+  hooks.renderNode.register(function (clone) {
+    if (!clone || clone.nodeType !== 1 || !clone.closest) return;
+    var table = clone.tagName === 'TABLE' ? clone : clone.closest('table');
+    if (!table || !table.getAttribute('data-split-from')) return;
+    var key = table.getAttribute('data-stylemd-table');
+    if (!key || !splitTableHeaders[key] || table.querySelector(':scope > thead')) return;
+    var holder = document.createElement('table');
+    holder.innerHTML = splitTableHeaders[key];
+    var head = holder.querySelector('thead');
+    if (head) table.insertBefore(head, table.firstChild);
+  });
+}
+// 整表换页时 Paged.js 会在原页留一个 0 行的空表壳，边框可能露出来，清掉。
+function cleanupEmptyTableShells() {
+  var tables = document.querySelectorAll('.pagedjs_pages table[data-role="table"]');
+  for (var i = 0; i < tables.length; i++) {
+    if (tables[i].rows.length === 0 && tables[i].parentNode) tables[i].parentNode.removeChild(tables[i]);
+  }
+}
+function attributeSelector(ref) {
+  return ref ? '[data-ref="' + String(ref).replace(/"/g, '\\"') + '"]' : '[data-ref="__stylemd_none__"]';
+}
+// 断点之前这一页还剩没剩别的渲染内容；落到页首时不能再前移，否则和上一页断点重合会被判成死循环。
+function hasRenderedContentBefore(pageContent, node) {
+  var current = node;
+  while (current && current !== pageContent) {
+    if (current.previousElementSibling) return true;
+    current = current.parentElement;
+  }
+  return false;
+}
+/**
+ * 表注/图注必须和被注对象同页。Paged.js 只认单层 break-avoid：断点落在表头（或图注段落）上时，
+ * 它只会把表/图推到下一页，把表注留在上一页页尾。这里在定断点的那一刻把断点整体前移到表注（或图片）之前。
+ */
+function installCaptionKeepWithNextHook() {
+  var hooks = window.PagedPolyfill && window.PagedPolyfill.chunker && window.PagedPolyfill.chunker.hooks;
+  if (!hooks || !hooks.onBreakToken || !hooks.onBreakToken.register) return;
+  hooks.onBreakToken.register(function (breakToken, overflow, rendered) {
+    if (!breakToken || !breakToken.node || !rendered || !overflow || !overflow.setStartBefore) return;
+    var element = breakToken.node.nodeType === 1 ? breakToken.node : breakToken.node.parentElement;
+    if (!element || !element.closest) return;
+    var anchor = null;
+    var table = element.closest('table');
+    if (table) {
+      var caption = table.previousElementSibling;
+      if (!caption || caption.getAttribute('data-role') !== 'table-caption') return;
+      // 只有断点落在表头（或整张表）上时，这一页除表注外不会再留下任何表内容；断点在表体行上说明表身还在这页，表注没落单
+      var head = element.closest('thead');
+      if (element !== table && !(head && head.parentElement === table)) return;
+      anchor = caption;
+    } else if (element.getAttribute('data-role') === 'figure-caption') {
+      var image = element.previousElementSibling;
+      if (!image || image.getAttribute('data-role') !== 'image') return;
+      anchor = image;
+    } else {
+      return;
+    }
+    var renderedAnchor = rendered.querySelector(attributeSelector(anchor.getAttribute('data-ref')));
+    if (!renderedAnchor || !hasRenderedContentBefore(rendered, renderedAnchor)) return;
+    overflow.setStartBefore(renderedAnchor);
+    breakToken.node = anchor;
+    breakToken.offset = 0;
+    return breakToken;
+  });
+}
 window.addEventListener('load', async function() {
   var toolbar = document.querySelector('.stylemd-toolbar');
   if (toolbar) toolbar.remove();
   try {
     await document.fonts.ready;
+    // 表格列宽必须在分页前定死：分页后再改会把行重新排高、把内容挤出页面。
+    stabilizeTableLayouts();
+    installSplitTableHeaderHook();
+    installCaptionKeepWithNextHook();
     var flow = await window.PagedPolyfill.preview();
+    cleanupEmptyTableShells();
     // Paged.js 已经把 @media screen 规则丢掉了，分页完成后补回屏幕外壳与工具栏样式。
     addStyle(${screenCss});
     if (toolbar) addStyle(${toolbarCss});

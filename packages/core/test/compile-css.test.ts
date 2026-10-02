@@ -65,4 +65,14 @@ describe('compileCss', () => {
     const css = compileCss(resolveStyles(tech), { includePage: false })
     expect(css).not.toContain('@page {')
   })
+
+  it('表头禁止单独留在上一页页脚', () => {
+    const css = compileCss(resolveStyles(thesis))
+    expect(css).toContain('table[data-role="table"] thead { break-after: avoid; }')
+  })
+
+  it('页面内容宽度暴露成 CSS 变量（分页层要在分页前按它定列宽）', () => {
+    const css = compileCss(resolveStyles(thesis))
+    expect(css).toContain('--stylemd-page-content-width: calc(210mm - 30mm - 25mm);')
+  })
 })

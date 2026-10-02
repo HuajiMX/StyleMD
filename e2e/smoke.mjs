@@ -180,6 +180,74 @@ async function main() {
     const pageCount = await preview.locator('.pagedjs_page').count()
     check('Paged.js 在预览中完成分页', pageCount >= 2, `${pageCount} 页`)
 
+    // 2.5 跨页表格：Paged.js 会把一张表切成多个 <table> 分片。分片之间不能出现列宽漂移，
+    //     不能只剩表头孤在上一页，也不能有行被挤出页面——列宽改晚了就会这样，连下框线都会跟着跑出页外。
+    const readTableFragments = () =>
+      preview.locator('.pagedjs_pages').evaluate((root) =>
+        Array.from(root.querySelectorAll('table[data-role="table"]')).map((table) => {
+          const box = table.closest('.pagedjs_page_content')
+          const bounds = box ? box.getBoundingClientRect() : null
+          const rowsInside = bounds
+            ? Array.from(table.rows).every((row) =>
+                Array.from(row.getClientRects()).every(
+                  (rect) => rect.bottom <= bounds.bottom + 1 && rect.left >= bounds.left - 1 && rect.right <= bounds.right + 1,
+                ),
+              )
+            : true
+          return {
+            key: table.getAttribute('data-split-from') || table.getAttribute('data-ref'),
+            rows: table.rows.length,
+            columns: Array.from(table.rows[0]?.cells ?? []).map((cell) => Math.round(cell.offsetWidth)),
+            rowsInside,
+          }
+        }),
+      )
+    const tableFragments = await until(
+      async () => {
+        const fragments = await readTableFragments()
+        const keys = new Set(fragments.map((fragment) => fragment.key))
+        const consistent =
+          fragments.length > 0 &&
+          [...keys].every((key) => {
+            const group = fragments.filter((fragment) => fragment.key === key)
+            return group.every(
+              (fragment) =>
+                fragment.rows >= 2 &&
+                fragment.rowsInside &&
+                fragment.columns.length > 0 &&
+                fragment.columns.join('×') === group[0].columns.join('×'),
+            )
+          })
+        return consistent ? fragments : null
+      },
+      { label: '跨页表格分片列宽一致且行都在页内' },
+    )
+    check(
+      '跨页表格分片列宽一致、行不越页且没有孤行表头',
+      true,
+      tableFragments
+        .map((fragment) => `${fragment.rows} 行/${fragment.columns.join('+')}px${fragment.rowsInside ? '' : '（有行越出页面）'}`)
+        .join('，'),
+    )
+
+    // 2.6 表注/图注必须和被注对象同页：断点落在表头或图注上时，题注要和表/图一起换页，不能单独留在上一页页尾。
+    const captionAudit = await until(
+      async () => {
+        const captions = await preview.locator('.pagedjs_pages').evaluate((root) => {
+          const pages = Array.from(root.querySelectorAll('.pagedjs_page'))
+          return Array.from(root.querySelectorAll('[data-role="table-caption"], [data-role="figure-caption"]')).map((caption) => {
+            const page = pages.indexOf(caption.closest('.pagedjs_page'))
+            const role = caption.getAttribute('data-role')
+            const partner = role === 'table-caption' ? 'table[data-role="table"]' : 'p[data-role="image"]'
+            return { role, page, samePage: Boolean(pages[page]?.querySelector(partner)) }
+          })
+        })
+        return captions.length > 0 && captions.every((caption) => caption.samePage) ? captions : null
+      },
+      { label: '表注/图注与被注对象同页' },
+    )
+    check('表注/图注与被注对象同页', true, captionAudit.map((caption) => `${caption.role}@第${caption.page + 1}页`).join('，'))
+
     check(
       '窗格标题栏已移除，字数与缩放收进底部栏',
       (await page.locator('.pane-head').count()) === 0 &&
@@ -383,12 +451,18 @@ async function main() {
 
     // 4h. 编辑器与预览之间的分隔条可以推动
     const editorBefore = (await page.locator('.source-pane').boundingBox()).width
-    const splitter = await page.locator('.splitter').last().boundingBox()
-    await page.mouse.move(splitter.x + splitter.width / 2, splitter.y + 200)
-    await page.mouse.down()
-    await page.mouse.move(splitter.x + splitter.width / 2 + 90, splitter.y + 200, { steps: 6 })
-    await page.mouse.up()
-    const editorAfter = (await page.locator('.source-pane').boundingBox()).width
+    let editorAfter = editorBefore
+    // 拖动是一串指针事件，预览重排时可能整串落在忙碌窗口里；拖不动就重试，不把偶发的时序当成没这个功能。
+    for (let attempt = 0; attempt < 3 && Math.abs(editorAfter - editorBefore - 90) >= 4; attempt += 1) {
+      const splitter = await page.locator('.splitter').last().boundingBox()
+      const delta = editorBefore + 90 - editorAfter
+      await page.mouse.move(splitter.x + splitter.width / 2, splitter.y + 200)
+      await page.mouse.down()
+      await page.mouse.move(splitter.x + splitter.width / 2 + delta, splitter.y + 200, { steps: 6 })
+      await page.mouse.up()
+      await page.waitForTimeout(150)
+      editorAfter = (await page.locator('.source-pane').boundingBox()).width
+    }
     check(
       '编辑器与预览之间可以推动调宽',
       Math.abs(editorAfter - editorBefore - 90) < 4,

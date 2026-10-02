@@ -50,14 +50,14 @@ npm.cmd run cli -- render examples/sample-thesis.md --theme thesis-cn --out out.
 ## Testing Guidelines
 
 - vitest，用例放在 `packages/*/test/*.test.ts`，用 `describe` / `it` 描述**行为**而非实现。
-- UI 交互由 `node e2e/smoke.mjs` 兜住（当前 42 项：分页、光标定位、样式编辑、行内与段落控件、布局与分隔条、文件菜单、会话恢复、双向滚动同步、大纲跳转与滚动高亮）。改了 UI 就同步改断言，别让断言失效成空转。
+- UI 交互由 `node e2e/smoke.mjs` 兜住（当前 62 项：分页、跨页表格分片、题注与对象同页、光标定位、样式编辑、行内与段落控件、布局与分隔条、文件菜单、会话恢复、双向滚动同步、大纲跳转与滚动高亮）。改了 UI 就同步改断言，别让断言失效成空转。
 - 新增内置样式包必须能通过 `validateTheme`（`presets.test.ts` 会兜住）。
 - 改动 CSS 编译或 HTML 渲染输出时同步更新断言，并说明预期变化。
 - 提交前至少跑 `npm.cmd test` 与 `npm.cmd run typecheck`；涉及 UI 再跑 `node e2e/smoke.mjs`。
 
 ## Commit & Pull Request Guidelines
 
-- 用 Conventional Commits（`feat:` / `fix:` / `style:` / `docs:` / `test:` / `chore:`），标题中文，正文列改动要点，并附**实际执行过的命令与结果**（例如「node e2e/smoke.mjs（42/42）」）。
+- 用 Conventional Commits（`feat:` / `fix:` / `style:` / `docs:` / `test:` / `chore:`），标题中文，正文列改动要点，并附**实际执行过的命令与结果**（例如「node e2e/smoke.mjs（62/62）」）。
 - 提交前确认暂存区没有生成物：`node_modules/`、`dist/`、`e2e/artifacts/` 由 `.gitignore` 覆盖，但 `git add -A` 后仍要扫一眼。
 - PR 需说明动机与影响面；UI 改动附截图（如 `e2e/artifacts/demo-smoke.png`）；修改样式模型结构必须同步 `schemaVersion` 与 `migrate.ts`。
 
