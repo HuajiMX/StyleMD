@@ -43,7 +43,7 @@ body {
 
 .ribbon-titlebar {
   display: flex; align-items: center; gap: 10px;
-  padding: 3px 10px;
+  padding: 5px 10px;
   background: var(--panel);
   border-bottom: 1px solid var(--line);
 }
@@ -63,8 +63,9 @@ body {
   background: var(--panel);
   border-bottom: 1px solid var(--line);
 }
-.ribbon-tab {
-  padding: 7px 14px 6px;
+.ribbon .ribbon-tab {
+  /* 通用规则 .ribbon button 的权重比 .ribbon-tab 高，这里得带上 .ribbon 前缀才压得住。 */
+  padding: 7px 15px 5px;
   border: 0; border-bottom: 2px solid transparent; border-radius: 0;
   background: transparent; color: var(--ink-2);
   font: inherit; font-size: 12.5px; cursor: pointer;
@@ -136,6 +137,7 @@ body {
 /* 通用按钮规则比组件类更具体，这里要把对齐按钮和组脚箭头的内边距抢回来。 */
 .rgroup .seg-button { padding: 2px 3px; }
 .rgroup .rgroup-expand { padding: 0 3px; }
+.rgroup .popover-trigger { padding: 0 4px; }
 .rgroup-foot {
   display: flex; align-items: center; justify-content: center; gap: 6px;
   padding: 1px 0 2px;
