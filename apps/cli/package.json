@@ -1,0 +1,15 @@
+{
+  "name": "@stylemd/cli",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "bin": {
+    "stylemd": "./src/cli.ts"
+  },
+  "dependencies": {
+    "@stylemd/core": "*",
+    "@stylemd/presets": "*",
+    "@stylemd/renderer-paged": "*",
+    "@stylemd/theme-schema": "*"
+  }
+}

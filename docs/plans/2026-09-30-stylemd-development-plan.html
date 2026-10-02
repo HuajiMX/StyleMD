@@ -1,0 +1,1265 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>StyleMD 开发规划（v1 · 2026-09-30）</title>
+<style>
+  :root {
+    --bg: #f6f7f9;
+    --panel: #ffffff;
+    --panel-2: #fbfcfd;
+    --ink: #161c24;
+    --ink-2: #3d4753;
+    --muted: #67727f;
+    --line: #e3e7ed;
+    --line-strong: #cdd4de;
+    --accent: #2f6fed;
+    --accent-soft: #eaf1ff;
+    --ok: #1f7a4d;
+    --ok-soft: #e8f6ee;
+    --warn: #9a6b00;
+    --warn-soft: #fdf5e3;
+    --danger: #b93220;
+    --danger-soft: #fdeeeb;
+    --radius: 10px;
+    --mono: ui-monospace, SFMono-Regular, "Cascadia Mono", Consolas, "Liberation Mono", monospace;
+    --sans: system-ui, -apple-system, "Segoe UI", "PingFang SC", "Microsoft YaHei", "Noto Sans SC", sans-serif;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #12151a;
+      --panel: #191d24;
+      --panel-2: #1e232b;
+      --ink: #e8ecf1;
+      --ink-2: #c2cad4;
+      --muted: #98a3b1;
+      --line: #2a3038;
+      --line-strong: #3a424d;
+      --accent: #6ea1ff;
+      --accent-soft: #1b2740;
+      --ok: #63c894;
+      --ok-soft: #16291f;
+      --warn: #e0b356;
+      --warn-soft: #2a2314;
+      --danger: #f08373;
+      --danger-soft: #2e1b18;
+    }
+  }
+  * { box-sizing: border-box; }
+  html { scroll-behavior: smooth; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--ink);
+    font-family: var(--sans);
+    font-size: 15.5px;
+    line-height: 1.7;
+    -webkit-font-smoothing: antialiased;
+  }
+  .nav {
+    position: sticky;
+    top: 0;
+    z-index: 20;
+    background: color-mix(in srgb, var(--panel) 88%, transparent);
+    backdrop-filter: saturate(160%) blur(10px);
+    border-bottom: 1px solid var(--line);
+  }
+  .nav-inner {
+    max-width: 1120px;
+    margin: 0 auto;
+    padding: 8px 20px;
+    display: flex;
+    flex-wrap: wrap;
+    gap: 4px 14px;
+    align-items: center;
+    font-size: 13px;
+  }
+  .nav a { color: var(--ink-2); text-decoration: none; padding: 4px 2px; border-bottom: 2px solid transparent; }
+  .nav a:hover { color: var(--accent); border-bottom-color: var(--accent); }
+  .nav .brand { font-weight: 650; color: var(--ink); margin-right: 6px; letter-spacing: .02em; }
+  .wrap { max-width: 1120px; margin: 0 auto; padding: 0 20px 80px; }
+  header.hero {
+    padding: 40px 0 24px;
+    border-bottom: 1px solid var(--line);
+    margin-bottom: 8px;
+  }
+  header.hero h1 { font-size: 30px; line-height: 1.3; margin: 0 0 10px; letter-spacing: -.01em; }
+  .north-star {
+    font-size: 17px;
+    color: var(--ink-2);
+    max-width: 78ch;
+    margin: 0 0 18px;
+  }
+  .meta { display: flex; flex-wrap: wrap; gap: 8px 20px; font-size: 13px; color: var(--muted); }
+  .meta b { color: var(--ink-2); font-weight: 600; }
+  .pill {
+    display: inline-block;
+    padding: 1px 9px;
+    border-radius: 999px;
+    font-size: 12px;
+    font-weight: 600;
+    border: 1px solid var(--line-strong);
+    background: var(--panel-2);
+    color: var(--ink-2);
+  }
+  .pill.plan { background: var(--accent-soft); border-color: transparent; color: var(--accent); }
+  .pill.ok { background: var(--ok-soft); border-color: transparent; color: var(--ok); }
+  .pill.warn { background: var(--warn-soft); border-color: transparent; color: var(--warn); }
+  .pill.danger { background: var(--danger-soft); border-color: transparent; color: var(--danger); }
+  h2 {
+    font-size: 21px;
+    margin: 44px 0 12px;
+    padding-top: 6px;
+    letter-spacing: -.005em;
+    scroll-margin-top: 56px;
+  }
+  h2 .num { color: var(--muted); font-weight: 500; margin-right: 8px; font-variant-numeric: tabular-nums; }
+  h3 { font-size: 16.5px; margin: 26px 0 8px; scroll-margin-top: 56px; }
+  h4 { font-size: 14.5px; margin: 18px 0 6px; color: var(--ink-2); }
+  p, li { color: var(--ink-2); }
+  a { color: var(--accent); }
+  code {
+    font-family: var(--mono);
+    font-size: .875em;
+    background: var(--panel-2);
+    border: 1px solid var(--line);
+    border-radius: 5px;
+    padding: .08em .34em;
+  }
+  pre {
+    background: var(--panel-2);
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    padding: 12px 14px;
+    overflow-x: auto;
+    font-size: 13px;
+    line-height: 1.6;
+  }
+  pre code { background: none; border: 0; padding: 0; font-size: 13px; }
+  .card {
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    padding: 16px 18px;
+    margin: 12px 0;
+  }
+  .grid { display: grid; gap: 12px; }
+  .g2 { grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); }
+  .g3 { grid-template-columns: repeat(auto-fit, minmax(230px, 1fr)); }
+  .q {
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-left: 3px solid var(--accent);
+    border-radius: var(--radius);
+    padding: 14px 16px;
+    margin: 12px 0;
+  }
+  .q .q-head { display: flex; flex-wrap: wrap; gap: 8px; align-items: baseline; justify-content: space-between; }
+  .q h4 { margin: 0; font-size: 15.5px; color: var(--ink); }
+  .q .rec { margin: 8px 0 0; font-size: 14px; }
+  .q .rec b { color: var(--ink); }
+  .q .impact { margin: 6px 0 0; font-size: 13px; color: var(--muted); }
+  table {
+    width: 100%;
+    border-collapse: collapse;
+    margin: 12px 0;
+    font-size: 14px;
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    overflow: hidden;
+  }
+  th, td { text-align: left; padding: 8px 11px; border-bottom: 1px solid var(--line); vertical-align: top; }
+  th { background: var(--panel-2); font-weight: 650; color: var(--ink); font-size: 13px; white-space: nowrap; }
+  tbody tr:last-child td { border-bottom: 0; }
+  td.c, th.c { text-align: center; }
+  .grp td { background: var(--panel-2); font-weight: 650; color: var(--ink); font-size: 13px; }
+  ul, ol { padding-left: 22px; }
+  li { margin: 4px 0; }
+  .note { font-size: 13px; color: var(--muted); }
+  .callout {
+    border: 1px solid var(--line);
+    border-left: 3px solid var(--warn);
+    background: var(--warn-soft);
+    border-radius: var(--radius);
+    padding: 12px 15px;
+    margin: 14px 0;
+    font-size: 14px;
+  }
+  .callout.good { border-left-color: var(--ok); background: var(--ok-soft); }
+  .callout.bad { border-left-color: var(--danger); background: var(--danger-soft); }
+  .callout p { margin: 4px 0; color: var(--ink-2); }
+  .flow {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: stretch;
+    gap: 8px;
+    margin: 14px 0;
+  }
+  .flow .step {
+    flex: 1 1 150px;
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: 8px;
+    padding: 9px 11px;
+    font-size: 13px;
+    min-width: 0;
+  }
+  .flow .step b { display: block; font-size: 13.5px; color: var(--ink); }
+  .flow .step span { color: var(--muted); font-size: 12.5px; }
+  .flow .arrow { align-self: center; color: var(--muted); font-size: 16px; }
+  .tree { font-family: var(--mono); font-size: 13px; line-height: 1.75; white-space: pre; overflow-x: auto; }
+  .tree em { color: var(--muted); font-style: normal; }
+  .phase {
+    background: var(--panel);
+    border: 1px solid var(--line);
+    border-radius: var(--radius);
+    padding: 0;
+    margin: 14px 0;
+    overflow: hidden;
+  }
+  .phase > .head {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 10px;
+    align-items: baseline;
+    padding: 12px 16px;
+    background: var(--panel-2);
+    border-bottom: 1px solid var(--line);
+  }
+  .phase > .head h3 { margin: 0; font-size: 16px; }
+  .phase > .body { padding: 12px 16px 16px; }
+  .phase > .head .est { font-size: 13px; color: var(--muted); margin-left: auto; }
+  .kv { font-size: 14px; }
+  .kv b { color: var(--ink); }
+  /* ---- low-fidelity wireframes ---- */
+  .wf {
+    border: 1px solid var(--line-strong);
+    border-radius: 8px;
+    background: var(--panel);
+    overflow: hidden;
+    font-size: 12px;
+    margin: 14px 0;
+  }
+  .wf-bar {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 6px 12px;
+    align-items: center;
+    padding: 7px 10px;
+    background: var(--panel-2);
+    border-bottom: 1px solid var(--line);
+    color: var(--muted);
+  }
+  .wf-bar b { color: var(--ink-2); font-weight: 600; }
+  .wf-cols { display: grid; grid-template-columns: 1.1fr 1.4fr 1.2fr; min-height: 230px; }
+  .wf-cols.two { grid-template-columns: 1fr 1fr; }
+  .wf-col { padding: 9px 10px; border-right: 1px dashed var(--line); min-width: 0; }
+  .wf-col:last-child { border-right: 0; }
+  .wf-tag {
+    display: inline-block;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: .03em;
+    color: var(--muted);
+    text-transform: uppercase;
+    margin-bottom: 7px;
+  }
+  .wf-line { height: 7px; border-radius: 3px; background: var(--line); margin: 5px 0; }
+  .wf-line.s { width: 55%; }
+  .wf-line.m { width: 78%; }
+  .wf-line.h1 { height: 12px; width: 60%; background: var(--line-strong); }
+  .wf-line.h2 { height: 9px; width: 45%; background: var(--line-strong); }
+  .wf-box {
+    border: 1px dashed var(--line-strong);
+    border-radius: 5px;
+    padding: 6px 8px;
+    color: var(--muted);
+    margin: 6px 0;
+    background: var(--panel-2);
+  }
+  .wf-page {
+    background: var(--panel);
+    border: 1px solid var(--line-strong);
+    border-radius: 3px;
+    padding: 10px 12px;
+    margin: 0 auto 10px;
+    box-shadow: 0 2px 8px rgba(0,0,0,.07);
+    max-width: 88%;
+  }
+  .wf-page .foot {
+    border-top: 1px solid var(--line);
+    margin-top: 10px;
+    padding-top: 4px;
+    color: var(--muted);
+    font-size: 11px;
+    display: flex;
+    justify-content: space-between;
+  }
+  .wf-row {
+    display: flex;
+    justify-content: space-between;
+    gap: 8px;
+    padding: 5px 7px;
+    border-bottom: 1px solid var(--line);
+    color: var(--ink-2);
+  }
+  .wf-row:last-child { border-bottom: 0; }
+  .wf-row.on { background: var(--accent-soft); color: var(--accent); font-weight: 600; }
+  .wf-swatch { display: inline-block; width: 12px; height: 12px; border-radius: 3px; border: 1px solid var(--line-strong); vertical-align: -2px; }
+  .legend { display: flex; flex-wrap: wrap; gap: 10px 18px; font-size: 13px; color: var(--muted); margin: 8px 0 0; }
+  .seq { display: flex; flex-wrap: wrap; gap: 8px; margin: 10px 0; }
+  .seq span {
+    font-size: 12.5px;
+    border: 1px solid var(--line);
+    background: var(--panel);
+    border-radius: 999px;
+    padding: 3px 11px;
+    color: var(--ink-2);
+  }
+  .seq span.now { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); font-weight: 600; }
+  footer {
+    margin-top: 50px;
+    padding-top: 18px;
+    border-top: 1px solid var(--line);
+    font-size: 13px;
+    color: var(--muted);
+  }
+  @media print {
+    .nav { display: none; }
+    body { background: #fff; font-size: 10.5pt; }
+    .card, .phase, .q, table, .wf { break-inside: avoid; }
+    h2 { break-after: avoid; }
+    a { color: inherit; text-decoration: none; }
+  }
+  @media (max-width: 760px) {
+    .wf-cols { grid-template-columns: 1fr; }
+    .wf-col { border-right: 0; border-bottom: 1px dashed var(--line); }
+    header.hero h1 { font-size: 24px; }
+  }
+</style>
+</head>
+<body>
+
+<nav class="nav">
+  <div class="nav-inner">
+    <span class="brand">StyleMD 规划</span>
+    <a href="#scope">范围</a>
+    <a href="#questions">待决问题</a>
+    <a href="#current">现状</a>
+    <a href="#target">目标</a>
+    <a href="#solution">方案选型</a>
+    <a href="#host">宿主选型</a>
+    <a href="#styles">样式能力</a>
+    <a href="#architecture">架构</a>
+    <a href="#model">数据契约</a>
+    <a href="#ux">界面线框</a>
+    <a href="#roadmap">路线图</a>
+    <a href="#qa">验证</a>
+    <a href="#risks">风险</a>
+    <a href="#delivery">工程与交付</a>
+    <a href="#handoff">实施交接</a>
+    <a href="#appendix">附录</a>
+  </div>
+</nav>
+
+<div class="wrap">
+
+<header class="hero">
+  <h1>StyleMD 开发规划 <span class="pill plan">v1 · 待评审</span></h1>
+  <p class="north-star">
+    StyleMD 要把 Markdown 的排版样式变成 Word 那样的<strong>可视化配置</strong>：用户在面板里点选"一级标题 / 正文 / 列表 / 图题"等结构角色，
+    直接调整字体字号、颜色、边框底纹、缩进与行距，右侧分页预览即时刷新，导出的 PDF 与预览在页面上逐页一致；样式可存成样式包、复用与分享，
+    并且样式模型与渲染后端解耦，未来可迁移到 DOCX / Typst 等输出通道而不重做界面。
+  </p>
+  <div class="meta">
+    <span><b>仓库</b> HuajiMX/StyleMD @ <code>main</code></span>
+    <span><b>基线提交</b> <code>83df2d4</code> Initial commit</span>
+    <span><b>规划日期</b> 2026-09-30</span>
+    <span><b>修订</b> v1.2 — 原型（M0/M1 垂直切片）已落地；宿主选型按计划推迟到 M2 开工前</span>
+    <span><b>状态</b> 原型可运行：核心库 + 浏览器工作台 + CLI（见仓库 README）</span>
+    <span><b>M0 结论</b> <a href="m0-render-spike-findings.md">m0-render-spike-findings.md</a></span>
+    <span><b>本文档</b> docs/plans/2026-09-30-stylemd-development-plan.html</span>
+  </div>
+</header>
+
+<h2 id="scope"><span class="num">01</span>范围、非目标与前提</h2>
+
+<div class="grid g2">
+  <div class="card">
+    <h4>范围内（v1 必须做到）</h4>
+    <ul>
+      <li>Markdown 源 → 语义角色 → <strong>分页预览</strong> → <strong>PDF / PNG / HTML 导出</strong> 的完整单机通路。</li>
+      <li>Word 式样式模型：段落样式（结构角色）、字符样式（行内强调/链接/代码）、"基于（继承）"关系、文档默认值。</li>
+      <li>可视化样式管理器：角色列表 + 实时样式样本 + 分组属性面板；预览中点击元素可直接跳转到该角色的样式。</li>
+      <li>文档级页面设置与页眉页脚：纸张、方向、页边距、分栏、页码域（含总页数）、封面独立页眉页脚。</li>
+      <li>样式包（<code>*.stylemd.json</code>）的导入 / 导出 / 内置预设 / 版本迁移。</li>
+      <li>桌面端应用（Windows 优先），核心库保持宿主无关，可被 Web / CLI 复用。</li>
+    </ul>
+  </div>
+  <div class="card">
+    <h4>非目标（明确不做，避免范围蔓延）</h4>
+    <ul>
+      <li>协同编辑、账号体系、云同步、团队权限。</li>
+      <li>Word 那样的"直接编辑排版结果"的富文本编辑：v1 仍是 Markdown 源码编辑 + 只读交互式预览。</li>
+      <li>与 Microsoft Word 100% 排版兼容；<code>.docx</code> 不作为一等格式（列为 M5 试探项）。</li>
+      <li>第三方插件运行时与主题市场；v1 只提供样式包（数据，不是代码）。</li>
+      <li>参考文献管理（Zotero / BibTeX 抓取）与公式可视化编辑；仅提供既有 LaTeX 语法的渲染与样式化。</li>
+      <li>移动端、纯在线版正式发布。</li>
+    </ul>
+  </div>
+</div>
+
+<h3>前提假设</h3>
+<ul>
+  <li>目标用户愿意继续写 Markdown 源码，只是不想手写 CSS；"可视化配置样式"是核心价值，编辑器本身不需要颠覆。</li>
+  <li>排版精度要求到 pt/mm 级别：中文行距、首行缩进 2 字符、三线表、图题居中、页码位置等都需要精确可控。</li>
+  <li>单文档常见 5–50 页，上限按 300 页设计；纯本地运行、可离线导出。</li>
+  <li>本机环境实测：Windows + Node <code>v24.11.1</code>；PowerShell 已禁用 <code>npm.ps1</code>（脚本必须用 <code>npm.cmd</code>）；<strong>无 Rust / Cargo</strong>；<code>pandoc</code> 可用（来自 Anaconda）。</li>
+</ul>
+
+<h3>决策边界（谁说了算）</h3>
+<table>
+  <thead>
+    <tr><th>类别</th><th>具体事项</th><th>决策方</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>可由实施方自行决定</td><td>仓库结构、内部 API 设计、依赖库选型、测试与 CI 策略、组件拆分</td><td>实施方（本规划内已给默认答案）</td></tr>
+    <tr><td>必须用户拍板</td><td>交付形态（桌面 / Web / 编辑器插件 / CLI）、首要目标场景、开源协议与商业化、是否投入 DOCX 后端</td><td>项目所有者</td></tr>
+    <tr><td>需要 M0 用数据回答</td><td>分页内核最终选型（Paged.js 还是原生打印分页）、性能上限</td><td>实施方出结论，项目所有者确认</td></tr>
+  </tbody>
+</table>
+
+<h2 id="questions"><span class="num">02</span>待决问题与建议默认值</h2>
+<p class="note">这些问题在写代码前值得花 10 分钟确认。每条都给了推荐默认值——若不回复，后续按"推荐"推进。</p>
+
+<div class="q">
+  <div class="q-head"><h4>Q1 · 宿主（壳）选型：Electron、Tauri、Qt，还是不要壳？</h4><span class="pill ok">部分已决</span></div>
+  <p class="rec"><b>已决（2026-09-30）：</b>渲染引擎采用 <b>Chromium</b>（Paged.js 分页 + Chromium 打印管线）。<b>待决：</b>承载它的壳。关键判断是——体积差异不来自"用不用 Electron"，而来自"要不要自带 Chromium"：自带 Chromium 的 Electron 与 Qt WebEngine 在同一量级（官方分发包分别实测 150.7 MB 与 160.4 MB），借系统 WebView 的 Tauri 只有 ~5–10 MB，但<b>只有 Windows 借到的是 Chromium</b>（macOS/Linux 是 WebKit）。</p>
+  <p class="rec"><b>建议：</b>不要把宿主选择和 M0/M1 绑在一起。M0 用浏览器原型 + 命令行导出验证分页，M1 只写宿主无关的核心库；把定案推迟到 <b>M2 开工前</b>。届时默认选 <b>Electron</b>（全平台同一个 Chromium、<code>printToPDF</code> 一等公民、纯 TS 开发成本最低）；若体积是硬指标且愿意放弃 macOS/Linux，再考虑 Tauri + WebView2。详见 <a href="#host">§5 D1b</a>。</p>
+  <p class="impact">影响：架构分层、打包分发、自动更新策略。详见 <a href="#solution">§5</a>、<a href="#host">§5 D1b</a>、<a href="#architecture">§7</a>、<a href="#delivery">§13</a>。决策人：项目所有者（建议在 M2 前定）。</p>
+</div>
+
+<div class="q">
+  <div class="q-head"><h4>Q2 · 首要场景：通用技术文档，还是学位论文 / 公文？</h4><span class="pill">影响默认模板</span></div>
+  <p class="rec"><b>建议：</b>v1 内置两套预设——「通用技术文档」（Markdown 原生语义即可覆盖）与「中文学位论文」（需要扩展语法）。若只能选一个，选技术文档：它的结构完全落在 Markdown 原生语法上，能最快跑通全链路；论文场景需要"摘要/关键词/图题/表题/参考文献"等语义扩展，投入更大但差异化最强（现有编辑器几乎都不支持"给图题单独配样式"）。</p>
+  <p class="impact">影响：语义层设计（<a href="#model">§8</a>）、内置样式包、验收用例（<a href="#qa">§11</a>）。决策人：项目所有者。</p>
+</div>
+
+<div class="q">
+  <div class="q-head"><h4>Q3 · 是否把 DOCX 作为输出目标？</h4><span class="pill">成本项</span></div>
+  <p class="rec"><b>建议：</b>v1 不做。先用 M0 验证"样式模型 → PDF"闭环；DOCX 作为 M5 的试探性后端（样式模型 → Word <code>styles.xml</code>，尽力映射，声明不保证逐像素一致）。理由：Word 的样式/编号模型与 CSS 不完全同构（编号是独立于样式的实体），要真正做好是另一个大工程，会拖慢核心价值交付。</p>
+  <p class="impact">影响：M5 范围与工作量（<a href="#roadmap">§10</a>）。决策人：项目所有者。</p>
+</div>
+
+<div class="q">
+  <div class="q-head"><h4>Q4 · 分页内核：引入 Paged.js，还是直接用浏览器原生分页？</h4><span class="pill warn">M0 验证</span></div>
+  <p class="rec"><b>建议：</b>默认走 <b>Paged.js</b>（在 Chromium 内实现 CSS Paged Media：页边距盒、页码域、<code>target-counter</code> 目录页号、脚注、跨页控制），代价是长文档分页性能需要专门治理。<b>M0 必须双轨验证</b>：同一份文档分别用 Paged.js 与"原生 <code>@page</code> + Chromium 页眉页脚模板"出 PDF，比较页码/页眉/目录页号的可实现性与 300 页耗时，用数据定案。</p>
+  <p class="impact">影响：预览架构、导出实现、性能预算（<a href="#architecture">§7</a>、<a href="#risks">§12</a>）。决策人：实施方出结论，项目所有者确认。</p>
+</div>
+
+<div class="q">
+  <div class="q-head"><h4>Q5 · 是否需要无界面的批量导出（CLI）？</h4><span class="pill">建议纳入</span></div>
+  <p class="rec"><b>建议：</b>要。核心库无 UI 依赖的前提下，CLI 只是薄壳（读取 Markdown + 样式包 → 输出 PDF），能顺带覆盖 CI 出报告、批量转档、服务端渲染等用法，且成本很低。</p>
+  <p class="impact">影响：核心库 API 边界与打包方式（<a href="#architecture">§7</a>）。决策人：项目所有者。</p>
+</div>
+
+<div class="q">
+  <div class="q-head"><h4>Q6 · 开源协议与字体策略？</h4><span class="pill">合规</span></div>
+  <p class="rec"><b>建议：</b>代码 MIT；内置字体只打包可再分发的开源字体（思源宋体/黑体、Noto 系列），并提供"使用本机已安装字体"的选项，不打包任何商业字体。安装包里的每个字体都要有来源与许可记录。</p>
+  <p class="impact">影响：分发合规、安装包体积、字体回退策略（<a href="#risks">§12</a>、<a href="#host">§5 D1b</a>）。决策人：项目所有者。</p>
+</div>
+
+<div class="q">
+  <div class="q-head"><h4>Q7 · 扩展机制做到什么程度？</h4><span class="pill">可延后</span></div>
+  <p class="rec"><b>建议：</b>v1 只做"数据级扩展"（样式包 JSON + 自定义 CSS 注入作为逃生舱），不做代码插件运行时。等样式模型稳定并出现真实需求后，再考虑插件 API。</p>
+  <p class="impact">影响：安全面（注入执行）、API 稳定性承诺（<a href="#risks">§12</a>）。决策人：项目所有者。</p>
+</div>
+
+<h2 id="current"><span class="num">03</span>现状与差距</h2>
+
+<h3>仓库现状（已核验）</h3>
+<table>
+  <thead><tr><th>检查项</th><th>证据</th><th>结论</th></tr></thead>
+  <tbody>
+    <tr><td>工作区文件</td><td>仅 <code>README.md</code>（134 字节，一句产品描述）</td><td>无任何实现</td></tr>
+    <tr><td>提交历史</td><td><code>git log</code> 仅 <code>83df2d4 Initial commit</code>，分支 <code>main</code>，remote <code>github.com:HuajiMX/StyleMD.git</code></td><td>全新项目，可自由选型</td></tr>
+    <tr><td>工程脚手架</td><td>无 <code>package.json</code> / tsconfig / 构建配置 / 测试 / CI</td><td>M0 从零搭建</td></tr>
+    <tr><td>本机工具链</td><td>Node v24.11.1 可用；<code>npm.ps1</code> 被组策略禁止（用 <code>npm.cmd</code>）；无 Rust；<code>pandoc</code> 存在</td><td>技术栈应落在 Node/TS 生态</td></tr>
+  </tbody>
+</table>
+<p class="note">数据来源：对 <code>E:\projects\StyleMD</code> 的目录列举、<code>git log</code> / <code>git status</code> 输出、以及本机命令可用性探测。此为 2026-09-30 的实测快照。</p>
+
+<h3>竞品差距（未联网核验，需在 M0 复核）</h3>
+<div class="callout">
+  <p><b>来源说明：</b>下表（竞品对比）基于既有知识整理，<b>未做在线核对</b>，需在 M0 期间复核。注意：本次网络访问不稳定，但对 Electron / Tauri / Qt 的官方文档做了定向核验，结论见 <a href="#host">§5 D1b</a> 与 <a href="#appendix">§15</a>。</p>
+</div>
+<table>
+  <thead>
+    <tr><th>方案</th><th>谁在用它</th><th>样式配置方式</th><th>主要短板</th></tr>
+  </thead>
+  <tbody>
+    <tr><td>Typora / MarkText</td><td>个人写作</td><td>手写主题 CSS 文件</td><td>无可视化样式面板；改一个标题字号要读 CSS；分页/页眉页脚能力弱</td></tr>
+    <tr><td>VS Code · Markdown Preview Enhanced</td><td>开发者</td><td>写 CSS + 配置文件</td><td>配置门槛高、预览与 PDF 常不一致、缺少 GUI</td></tr>
+    <tr><td>Pandoc + LaTeX 模板</td><td>学术用户</td><td>改 <code>.tex</code> 模板</td><td>需安装 TeX 发行版（数 GB）、模板语言学习成本极高</td></tr>
+    <tr><td>Vivliostyle / Paged.js（库）</td><td>开发者</td><td>写 CSS Paged Media</td><td>是引擎不是产品，仍然要手写 CSS</td></tr>
+    <tr><td>Prince XML</td><td>出版/企业</td><td>CSS</td><td>商业授权昂贵；面向开发者而非写作者</td></tr>
+    <tr><td>Microsoft Word</td><td>所有人</td><td><b>可视化样式管理器</b></td><td>不是 Markdown 工具；与源码工作流冲突</td></tr>
+  </tbody>
+</table>
+<p><b>空缺定位：</b>把 Word 的"样式管理器"交互体验，接到 Markdown 源码工作流与高质量分页输出上。这句话就是 StyleMD 的产品假设，也是 M0 之后所有排期的优先级依据。</p>
+
+<h2 id="target"><span class="num">04</span>目标行为与验收标准</h2>
+
+<h3>核心用户旅程（v1 结束时应全部走通）</h3>
+<div class="flow">
+  <div class="step"><b>1. 打开 / 新建</b><span>拖入 .md 文件或新建文档，自动套用样式包</span></div>
+  <div class="step"><b>2. 选预设</b><span>从样式包面板挑「学位论文 / 技术文档 / 公文」</span></div>
+  <div class="step"><b>3. 调样式</b><span>在样式管理器里改一级标题：字体、字号、段前段后、下边框</span></div>
+  <div class="step"><b>4. 即时预览</b><span>分页预览在 300ms 内刷新，字号/行距变化可见</span></div>
+  <div class="step"><b>5. 检查分页</b><span>翻页检查孤行、图表跨页、页码与目录页号</span></div>
+  <div class="step"><b>6. 导出</b><span>一键导出 PDF / PNG / HTML，或另存样式包复用</span></div>
+</div>
+
+<h3>定义完成（Definition of Done，按可观测行为书写）</h3>
+<table>
+  <thead><tr><th class="c">#</th><th>验收标准</th><th>验证方式</th></tr></thead>
+  <tbody>
+    <tr><td class="c">1</td><td>不写一行 CSS，仅通过界面即可把"一级标题"改成：黑体、小二 18pt、居中、段前 18pt 段后 12pt、下边框 1pt 灰色、与下段同页</td><td>端到端用例 E2E-H1，截图比对</td></tr>
+    <tr><td class="c">2</td><td>同一文档的预览页与导出的 PDF 对应页，在 150 DPI 光栅化后像素差异 &lt; 0.5%</td><td>视觉回归脚本（Playwright + 位图 diff）</td></tr>
+    <tr><td class="c">3</td><td>页眉/页脚支持页码、总页数、文档标题、日期四类域，且封面页可独立设置为无页眉页脚</td><td>固定用例文档 + 逐页人工核对</td></tr>
+    <tr><td class="c">4</td><td>目录（TOC）自动生成，页码正确；标题改动后刷新仍然正确</td><td>固定用例文档</td></tr>
+    <tr><td class="c">5</td><td>图题、表题可单独配置样式（字体、字号、对齐、编号格式如「图 3-1」），编号随章节自动更新</td><td>固定用例文档</td></tr>
+    <tr><td class="c">6</td><td>300 页文档：完整分页 ≤ 30s，首屏可见 ≤ 5s，峰值内存 ≤ 1.5GB</td><td>性能基准脚本，纳入 CI 门槛</td></tr>
+    <tr><td class="c">7</td><td>样式包可导出、重新导入、在另一台机器上还原一致版式；schema 版本升级有自动迁移</td><td>往返测试 + schema 迁移单测</td></tr>
+    <tr><td class="c">8</td><td>PDF 中文字体正确嵌入、文本可复制搜索，不出现方框（tofu）</td><td>导出后 <code>pdffonts</code> / 文本提取断言</td></tr>
+    <tr><td class="c">9</td><td>恶意/异常 Markdown（原始 HTML、脚本、超长行、非法嵌套）不会导致崩溃或任意代码执行</td><td>安全用例集 + 消毒策略单测</td></tr>
+    <tr><td class="c">10</td><td>命令行批量导出：<code>stylemd export doc.md --theme thesis.json -o doc.pdf</code> 在 CI 上无界面运行成功</td><td>CI 冒烟任务</td></tr>
+  </tbody>
+</table>
+
+<h2 id="solution"><span class="num">05</span>推荐方案与备选（关键决策）</h2>
+
+<h3>D1 · 渲染管线（已确认：Chromium 打印管线）</h3>
+<div class="callout good">
+  <p><b>已确认（2026-09-30）：</b>渲染引擎采用 <b>Chromium</b>——分页预览与 PDF 导出共用同一条 Chromium 渲染/打印管线。下表的备选对比保留下来，作为"为什么不是别的方案"的决策记录。</p>
+</div>
+<table>
+  <thead><tr><th>候选</th><th>预览一致性</th><th>富样式表达力</th><th>页级特性</th><th>分发体积</th><th>结论</th></tr></thead>
+  <tbody>
+    <tr>
+      <td><b>A. HTML/CSS + Paged.js + Chromium 打印</b></td>
+      <td class="c">极好（预览与导出同一引擎）</td>
+      <td class="c">极好（CSS 天生覆盖边框/底纹/缩进）</td>
+      <td class="c">中（Paged.js 补齐页码域/目录/脚注）</td>
+      <td class="c">自带 Chromium：官方分发包 150.7 MB</td>
+      <td><span class="pill ok">推荐主干</span></td>
+    </tr>
+    <tr>
+      <td>B. Typst 后端</td>
+      <td class="c">差（必须另写预览器，双引擎易不一致）</td>
+      <td class="c">好（模板函数需自行映射）</td>
+      <td class="c">好（原生页眉页脚/目录/脚注）</td>
+      <td class="c">小（单二进制）</td>
+      <td>列为 M5 可选后端</td>
+    </tr>
+    <tr>
+      <td>C. LaTeX（Pandoc）</td>
+      <td class="c">差</td>
+      <td class="c">中（富文本样式映射痛苦，需 tcolorbox 等）</td>
+      <td class="c">极好</td>
+      <td class="c">极大（TeX 发行版 GB 级）</td>
+      <td>不采用</td>
+    </tr>
+    <tr>
+      <td>D. Prince XML</td>
+      <td class="c">好</td>
+      <td class="c">极好</td>
+      <td class="c">极好（最完整的 CSS Paged Media）</td>
+      <td class="c">小，但商业授权昂贵</td>
+      <td>保留为"高保真商业版"可选授权路径</td>
+    </tr>
+    <tr>
+      <td>E. 纯 JS PDF 库（react-pdf / pdfmake）</td>
+      <td class="c">极好（同引擎）</td>
+      <td class="c">中（一切排版需自研：断行、分页、孤行）</td>
+      <td class="c">需全部自研</td>
+      <td class="c">小</td>
+      <td>备选：若 Paged.js 性能不可接受再评估</td>
+    </tr>
+  </tbody>
+</table>
+<div class="callout good">
+  <p><b>决定性理由：</b>本产品的核心承诺是「所见即所得的分页预览」。只有当预览与导出共用同一个排版引擎时，这个承诺才不需要靠无穷无尽的补偿技巧来维持。方案 A 让 CSS 成为样式模型的编译目标，而 CSS 恰好是"边框、底纹、缩进、行距、分栏、页边距"表达力最强的声明式语言。</p>
+</div>
+
+<h3 id="host">D1b · 宿主（壳）选型：Chromium 是硬约束，壳是可替换的</h3>
+<p>渲染引擎已确定为 Chromium，于是宿主选型的问题被简化成一句话：<b>要不要自带 Chromium</b>。自带 Chromium 的方案（Electron、Qt WebEngine）体积落在同一量级；借系统 WebView 的方案（Tauri）体积小一个数量级，但只有在 <b>Windows</b> 上借到的才是 Chromium。以下数据均为 2026-09-30 定向核验的官方来源（见 <a href="#appendix">§15</a>）。</p>
+
+<table>
+  <thead><tr><th>宿主</th><th>渲染引擎</th><th>实测 / 官方体积</th><th>一键导出 PDF</th><th>开发成本</th><th>结论</th></tr></thead>
+  <tbody>
+    <tr>
+      <td><b>Electron</b></td>
+      <td>自带 Chromium，全平台同一版本</td>
+      <td>官方分发包 <code>electron-v44.5.1-win32-x64.zip</code> = <b>150.7 MB</b>（darwin-arm64 124.2 MB、darwin-x64 128.0 MB、linux-x64 117.2 MB）；NSIS 安装包经压缩后通常更小</td>
+      <td><code>webContents.printToPDF(options)</code>，支持 <code>pageSize</code> / <code>margins</code> / <code>printBackground</code> / <code>displayHeaderFooter</code></td>
+      <td>低（纯 TS / 前端栈）</td>
+      <td><span class="pill ok">推荐默认</span></td>
+    </tr>
+    <tr>
+      <td><b>Tauri（Windows 限定）</b></td>
+      <td>WebView2 = Chromium ✔<br><span class="note">官方原文：Tauri uses WebView2 which is based on Microsoft Edge and therefore Chromium</span></td>
+      <td>~5–10 MB 量级（不含运行时；Windows 11 已预装 WebView2）</td>
+      <td>需自建：Rust 侧 <code>with_webview</code> 拿到 WebView2 接口 → <code>ICoreWebView2_7::PrintToPdfAsync</code>；Tauri 自身只暴露 <code>print</code>（打印对话框）</td>
+      <td>中（需要 Rust 工具链，本机未安装）</td>
+      <td>体积硬约束下的候选</td>
+    </tr>
+    <tr>
+      <td><b>Tauri（跨平台）</b></td>
+      <td>macOS = WKWebView、Linux = webkit2gtk（WebKit，非 Chromium）</td>
+      <td>~5–10 MB 量级</td>
+      <td>各平台各自实现，分页结果不一致</td>
+      <td>中高</td>
+      <td><span class="pill danger">与 Chromium 渲染承诺冲突</span></td>
+    </tr>
+    <tr>
+      <td><b>Qt 6 + WebEngine</b></td>
+      <td>自带 Chromium（Qt WebEngine 基于 Chromium）</td>
+      <td><b>无体积优势</b>：含 WebEngine 的 <code>pyside6_addons-6.11.2-win_amd64.whl</code> = <b>160.4 MB</b>，与 Electron 同量级甚至更大</td>
+      <td><code>QWebEnginePage::printToPdf()</code> 一等公民</td>
+      <td>高（C++/QML 或 PySide 栈 + Qt 部署 + LGPL/GPL 合规）</td>
+      <td><span class="pill danger">不推荐</span></td>
+    </tr>
+    <tr>
+      <td><b>浏览器版（无壳）</b></td>
+      <td>用户自己的 Edge / Chrome（Chromium）</td>
+      <td>0 MB</td>
+      <td>浏览器打印对话框「另存为 PDF」；页码与页眉页脚由 Paged.js 画进页面，可在对话框里关掉浏览器自带的页眉页脚</td>
+      <td>最低</td>
+      <td><span class="pill">M0 原型首选</span></td>
+    </tr>
+  </tbody>
+</table>
+
+<div class="callout">
+  <p><b>结论：</b>Qt 在体积上没有任何优势（同样自带 Chromium，还要额外承担 UI 栈、Qt 部署与许可合规），排除；Tauri 只有在"只做 Windows"或"接受跨平台分页不一致"时才成立；Electron 是唯一同时满足"全平台 Chromium + 一键导出 + 低开发成本"的选项。</p>
+</div>
+
+<div class="callout good">
+  <p><b>但不必现在定壳。</b>§7 已约定核心库与宿主无关，因此宿主选型是<b>可逆决策</b>，建议把决策点推迟到 M2 开工前：M0 用浏览器原型 + 命令行导出验证分页，M1 只写纯 TS 核心库，两者都不依赖宿主。届时按实测体积与目标平台再定，切换成本几乎为零——这正是"核心与宿主解耦"这条约束换来的自由度。</p>
+</div>
+
+<h4>若最终选 Electron，体积优化清单（M2 执行）</h4>
+<ul>
+  <li><code>electronLanguages</code>（electron-builder 配置）：只保留 <code>zh-CN</code> / <code>en-US</code>，其余 <code>locales/*.pak</code> 会被删除（源码已确认该行为，并有"全删光时跳过清理"的自我保护）。预计节省 10–25 MB，以实测为准。</li>
+  <li>NSIS 目标 + 最大压缩；用 asar 打包，避免把源码树原样塞进安装包。</li>
+  <li>不要在同一个项目里引入第二份 Chromium（例如为了 CLI 导出再打包 Puppeteer / Playwright）：CLI 导出复用同一个 Electron 二进制，或直接用系统浏览器。</li>
+  <li>保留 <code>LICENSES.chromium.html</code>，不要为了省十几 MB 去掉许可文件。</li>
+</ul>
+
+<div class="callout bad">
+  <p><b>要诚实面对的事：</b>只要承诺"全平台 Chromium 渲染"，安装包就在 100 MB 量级——这个代价无法靠换壳绕开（Typora、Obsidian、VS Code 都在这条线上）。如果体积是硬指标，真正该改的是<b>发布形态</b>而不是壳：浏览器版 0 MB，Tauri + Windows-only 约 10 MB。</p>
+</div>
+
+<h3>D2 · 样式模型与渲染后端解耦（本规划最重要的一条架构约束）</h3>
+<p>样式模型是产品的核心资产，必须是<strong>纯粹的数据</strong>：描述"角色 → 属性"的树，不含任何 CSS 字符串、DOM 或引擎概念。后端只负责"把模型翻译成目标格式"：</p>
+<table>
+  <thead><tr><th>后端</th><th>输入</th><th>输出</th><th>阶段</th></tr></thead>
+  <tbody>
+    <tr><td>CSS 后端（默认）</td><td>样式模型 + 语义 HTML</td><td>分页预览 + PDF</td><td>M1–M4</td></tr>
+    <tr><td>DOCX 后端</td><td>样式模型</td><td><code>styles.xml</code> + 文档</td><td>M5（可选）</td></tr>
+    <tr><td>Typst 后端</td><td>样式模型</td><td><code>.typ</code> 模板 + PDF</td><td>M5（可选）</td></tr>
+    <tr><td>HTML 后端</td><td>样式模型</td><td>带内联样式的自包含 HTML</td><td>M4（低成本附赠）</td></tr>
+  </tbody>
+</table>
+<p>这条约束的价值：日后用户抱怨"PDF 里的表格跨页不好看"时，可以只换后端，而不动界面和样式模型。反过来说，如果样式面板的每个控件都直接写死成一段 CSS，产品就永久锁死在 Chromium 上了。</p>
+
+<h3>D3 · 参考实现：Word 的样式语义</h3>
+<table>
+  <thead><tr><th>Word 概念</th><th>StyleMD 对应</th><th>原因</th></tr></thead>
+  <tbody>
+    <tr><td>段落样式（标题 1 / 正文 / 题注）</td><td>结构角色样式（<code>role: heading.1</code> / <code>paragraph</code> / <code>figure.caption</code>）</td><td>与 Markdown AST 节点一一对应</td></tr>
+    <tr><td>字符样式（强调 / 超链接）</td><td>行内样式（<code>inline.strong</code> / <code>inline.link</code> / <code>inline.code</code>）</td><td>行内语义在 Markdown 里是独立标记</td></tr>
+    <tr><td>样式基于（based on）</td><td><code>basedOn</code> 继承链，最多 4 层，禁止环</td><td>改"正文"能带动所有衍生样式</td></tr>
+    <tr><td>文档默认值</td><td><code>document.defaults</code>（字体、字号、行距、文字色）</td><td>所有样式的最终兜底</td></tr>
+    <tr><td>直接格式化</td><td><code>overrides</code>（按文档路径定位的局部覆盖）</td><td>少量例外不必新增样式</td></tr>
+    <tr><td>样式集 / 主题</td><td>样式包（<code>.stylemd.json</code>）</td><td>可分享、可版本化的资产</td></tr>
+  </tbody>
+</table>
+<p><b>明确的差异：</b>Word 把"编号（编号格式、多级列表）"作为独立于段落样式的实体，StyleMD v1 简化为"样式内联编号定义 + 文档级编号表"，并在文档中说明这一简化，避免用户误以为与 Word 完全同构。</p>
+
+<h2 id="styles"><span class="num">06</span>样式能力矩阵（产品规格核心）</h2>
+<p>这张表就是"样式管理器面板里到底有哪些控件"的完整清单，也是 M3 的验收依据。<b>技术落点</b>列说明该能力在 CSS 后端如何实现；标注 ⚠ 的是需要降级策略或明确声明"尽力而为"的项。</p>
+
+<table>
+  <thead>
+    <tr><th>能力域</th><th>可控项</th><th class="c">里程碑</th><th>技术落点（CSS 后端）</th></tr>
+  </thead>
+  <tbody>
+    <tr class="grp"><td colspan="4">字体与字符</td></tr>
+    <tr><td>字体</td><td>西文族 / 中文字族分别指定、字体回退链、粗体字重选择（真粗体 vs 合成）</td><td class="c">M3</td><td><code>font-family</code> 链；<code>@font-face</code> 子集嵌入；weight 回退检测</td></tr>
+    <tr><td>字号与字形</td><td>字号（pt/中文号数对照）、加粗、倾斜、下划线、删除线、小型大写、上/下标</td><td class="c">M3</td><td><code>font-size</code> / <code>font-weight</code> / <code>font-variant</code> / <code>vertical-align</code></td></tr>
+    <tr><td>字符间距</td><td>字距、词距、字符横向缩放、全半角</td><td class="c">M3</td><td><code>letter-spacing</code> / <code>word-spacing</code> / <code>transform</code></td></tr>
+    <tr><td>颜色</td><td>文字色、高亮背景、透明度</td><td class="c">M3</td><td><code>color</code> / <code>background-color</code>（行内用 <code>box-decoration-break</code>）</td></tr>
+    <tr><td>中文排印</td><td>中西文混排间距、标点挤压、避头尾、行首禁则</td><td class="c">M3</td><td>⚠ <code>line-break: strict</code> / <code>text-autospace</code> 支持不全，需用 CSS 组合 + 文档说明</td></tr>
+
+    <tr class="grp"><td colspan="4">段落与版式</td></tr>
+    <tr><td>对齐</td><td>左/居中/右/两端对齐、末行对齐方式、强制换行保留</td><td class="c">M3</td><td><code>text-align</code> / <code>text-align-last</code></td></tr>
+    <tr><td>行距</td><td>倍数 / 固定值 pt / 最小值三种模式、段前段后间距</td><td class="c">M3</td><td><code>line-height</code> / <code>margin-block</code>；固定值用 <code>line-height: Npt</code></td></tr>
+    <tr><td>缩进</td><td>首行缩进（如 2 字符）、悬挂缩进、左右缩进、负缩进</td><td class="c">M3</td><td><code>text-indent</code> / <code>padding-inline-start</code>（用 <code>ch</code> 或 <code>em</code> 表达"字符"）</td></tr>
+    <tr><td>分页控制</td><td>与下段同页、段中不分页、段前分页、孤行控制、禁止与上文分离</td><td class="c">M4</td><td><code>break-before/after/inside</code> / <code>widows</code> / <code>orphans</code>（Paged.js 支持度需实测）</td></tr>
+    <tr><td>边框与底纹</td><td>四边独立边框（线型/线宽/颜色）、圆角、内边距、底纹色与图案、段落框宽度</td><td class="c">M3</td><td><code>border-*</code> / <code>border-radius</code> / <code>padding</code> / <code>background</code></td></tr>
+    <tr><td>制表位与分隔</td><td>制表位位置与对齐、水平分隔线样式</td><td class="c">M4</td><td>⚠ <code>tab-size</code> + 后续用 flex/grid 容器实现</td></tr>
+
+    <tr class="grp"><td colspan="4">列表与编号</td></tr>
+    <tr><td>项目符号</td><td>符号字符（•/–/▪/自定义）、符号大小与颜色、符号与文本间距</td><td class="c">M3</td><td><code>::marker</code> / <code>list-style-type</code> / <code>content</code></td></tr>
+    <tr><td>编号格式</td><td>数字 / 中文数字 / 罗马 / 括号形式（1. / （1）/ ①/ 一、）、起始值、重启规则</td><td class="c">M3</td><td><code>@counter-style</code> 自定义计数器</td></tr>
+    <tr><td>多级列表</td><td>最多 9 级缩进与编号格式、各级对齐、悬挂对齐</td><td class="c">M4</td><td>嵌套 <code>ol</code> + 计数器作用域</td></tr>
+    <tr><td>标题自动编号</td><td>"第 1 章 / 1.1 / 1.1.1"格式、编号与标题间距、编号颜色、是否随样式变化</td><td class="c">M4</td><td>CSS 计数器 + <code>::before</code>（内容与样式解耦的坑点需在文档中说明）</td></tr>
+
+    <tr class="grp"><td colspan="4">图片、表格与题注</td></tr>
+    <tr><td>图片</td><td>宽度（%/pt/原尺寸）、高度、对齐、最大高度约束、圆角、边框、阴影</td><td class="c">M4</td><td><code>img</code> 尺寸与 <code>object-fit</code>；超页自动缩放</td></tr>
+    <tr><td>图文环绕</td><td>嵌入 / 上下型 / 四周型 / 紧密型</td><td class="c">M5</td><td>⚠ <code>float</code> 在分页环境下行为不稳定，先只保证"嵌入 + 上下型"</td></tr>
+    <tr><td>题注</td><td>图题/表题位置（上/下）、字体样式、编号格式与章节联动、题注与对象的间距</td><td class="c">M4</td><td><code>figcaption</code> / <code>caption-side</code> + 计数器</td></tr>
+    <tr><td>表格</td><td>三线表/全框线/自定义边框、表头样式、斑马纹、单元格内边距、列宽策略（自适应/等比/固定）</td><td class="c">M4</td><td><code>border-collapse</code> + 伪元素画三线表；<code>table-layout</code></td></tr>
+    <tr><td>表格跨页</td><td>表头行重复、行内不断行、跨页边框衔接</td><td class="c">M4</td><td>⚠ <code>thead</code> 重复依赖 Paged.js；需专项用例</td></tr>
+
+    <tr class="grp"><td colspan="4">页面与文档</td></tr>
+    <tr><td>页面设置</td><td>纸张（A4/A3/B5/Letter/自定义 mm）、方向、四边页边距、装订线、镜像页边距、分栏、页面背景</td><td class="c">M4</td><td><code>@page</code> 规则（Paged.js 解析为真实分页盒）</td></tr>
+    <tr><td>页眉页脚</td><td>左/中/右分区、页码域、总页数、文档标题、日期、奇偶页不同、首页不同、距边界距离、上下边框线</td><td class="c">M4</td><td>Paged.js <code>@page</code> 页边距盒 + <code>counter(page)</code> / <code>counter(pages)</code></td></tr>
+    <tr><td>页码</td><td>起始页号、编号格式（阿拉伯/罗马/中文）、封面与目录单独编号、正文重新从 1 开始</td><td class="c">M4</td><td><code>counter-reset: page</code> + 命名页组</td></tr>
+    <tr><td>目录</td><td>层级范围、点线引导、缩进、页码对齐（右对齐）、页码与标题的语法</td><td class="c">M4</td><td><code>target-counter(attr(href), page)</code></td></tr>
+    <tr><td>脚注 / 尾注</td><td>脚注区样式、分隔线、编号格式与重启、跨页脚注</td><td class="c">M5</td><td>⚠ Paged.js 脚注 polyfill 差异较大，需 M0 一并验证</td></tr>
+    <tr><td>封面与前置页</td><td>独立页面设置、无页眉页脚、独立的标题/作者/机构样式块</td><td class="c">M4</td><td>命名页 <code>@page cover</code> + 前置语义角色</td></tr>
+
+    <tr class="grp"><td colspan="4">内联与代码</td></tr>
+    <tr><td>引用块</td><td>左侧竖线、缩进、背景、引用嵌套层级样式</td><td class="c">M3</td><td><code>blockquote</code> + 伪元素</td></tr>
+    <tr><td>代码</td><td>行内代码样式；代码块主题、行号、背景、圆角、横向溢出策略、语法高亮主题</td><td class="c">M3</td><td>Shiki 生成内联样式 token + 容器样式</td></tr>
+    <tr><td>链接与交叉引用</td><td>链接色、下划线开关、打印时可选择展开 URL、图表引用样式</td><td class="c">M4</td><td><code>a[href]::after</code> + <code>@media print</code></td></tr>
+    <tr><td>数学公式</td><td>行内/独立公式的字号与间距、编号、对齐</td><td class="c">M4</td><td>KaTeX 渲染为 HTML，样式通过外层角色控制</td></tr>
+    <tr><td>分割线</td><td>线型、颜色、粗细、上下间距</td><td class="c">M3</td><td><code>hr</code> 的 border 样式化</td></tr>
+  </tbody>
+</table>
+<p class="note">⚠ 标记项是本项目"必须主动降级声明"的清单：这些能力在 CSS Paged Media 生态里支持度参差，UI 上要给"尽力而为"提示，不要假装和 Word 一致。</p>
+
+<h2 id="architecture"><span class="num">07</span>架构与仓库结构</h2>
+
+<h3>渲染管线</h3>
+<div class="flow">
+  <div class="step"><b>Markdown 源</b><span>*.md</span></div>
+  <div class="arrow">→</div>
+  <div class="step"><b>解析</b><span>remark/remark-directive → MDAST</span></div>
+  <div class="arrow">→</div>
+  <div class="step"><b>角色化标注</b><span>MDAST → 语义角色（摘要/图题/参考文献…）</span></div>
+  <div class="arrow">→</div>
+  <div class="step"><b>样式解析</b><span>继承链 + 覆盖 + 文档默认 → 计算样式</span></div>
+  <div class="arrow">→</div>
+  <div class="step"><b>HTML 渲染</b><span>语义 HTML + <code>data-role</code></span></div>
+  <div class="arrow">→</div>
+  <div class="step"><b>CSS 编译</b><span>计算样式 → <code>@page</code> + 角色选择器</span></div>
+  <div class="arrow">→</div>
+  <div class="step"><b>分页预览</b><span>Paged.js 在 WebView 中分页</span></div>
+  <div class="arrow">→</div>
+  <div class="step"><b>导出</b><span>Chromium printToPDF → PDF / PNG / HTML</span></div>
+</div>
+
+<h3>分层原则（三条硬约束）</h3>
+<ol>
+  <li><b>核心库不依赖 UI 与宿主</b>：<code>packages/core</code> 只做纯函数式的"输入 → 输出"，不 import React、不依赖 Electron API。这样才能被 CLI、Web、CI 复用，也才能被单元测试完整覆盖。</li>
+  <li><b>样式模型不含 CSS 字符串</b>：所有属性用结构化字段表达（见 §8），CSS 只是编译产物。禁止在样式模型里出现 <code>"border-bottom: 1px solid #888"</code> 这样的字符串。</li>
+  <li><b>预览与导出走同一个渲染函数</b>：导出的 HTML 由预览所用的同一段代码生成，避免"两套模板慢慢漂移"这一经典失效模式。</li>
+</ol>
+
+<h3>建议的 monorepo 结构</h3>
+<pre class="tree"><code>StyleMD/
+├─ package.json                  <em>npm workspaces 根（本机无 pnpm/yarn，用 npm 原生 workspaces）</em>
+├─ tsconfig.base.json            <em>strict: true</em>
+├─ packages/
+│  ├─ theme-schema/              <em>样式模型定义（TS 类型 + JSON Schema + 校验 + 版本迁移）</em>
+│  │  ├─ src/schema.ts           <em>StyleTheme / RoleStyle / PageSetup …</em>
+│  │  ├─ src/validate.ts
+│  │  ├─ src/migrate.ts          <em>v1 → v2 … 逐级迁移</em>
+│  │  └─ schema/theme.v1.json
+│  ├─ core/                      <em>无 UI：解析 → 角色化 → 样式解析 → HTML → CSS</em>
+│  │  ├─ src/parse/markdown.ts
+│  │  ├─ src/roles/annotate.ts   <em>未识别段落回退为 paragraph</em>
+│  │  ├─ src/style/resolve.ts    <em>继承链、覆盖优先级、环检测</em>
+│  │  ├─ src/style/compile-css.ts
+│  │  ├─ src/render/html.ts
+│  │  └─ src/index.ts            <em>稳定对外 API</em>
+│  ├─ renderer-paged/            <em>Paged.js 集成、分页调度、虚拟化预览</em>
+│  ├─ export-pdf/                <em>Electron printToPDF 封装 + CLI 用 Playwright 通道</em>
+│  └─ presets/                   <em>内置样式包：技术文档 / 学位论文 / 公文 / 简约</em>
+├─ apps/
+│  ├─ desktop/                   <em>Electron 主进程 + React 渲染层</em>
+│  │  └─ src/renderer/{EditorPane, PreviewPane, StyleManager, ThemePackPanel}
+│  └─ cli/                       <em>stylemd export / stylemd lint-theme</em>
+├─ e2e/                          <em>Playwright：用户旅程 + 视觉回归（黄金 PDF 位图）</em>
+├─ fixtures/                     <em>固定测试文档：表格跨页、长图、脚注、CJK 标点…</em>
+└─ docs/plans/                   <em>本规划及其后续版本</em></code></pre>
+
+<h3>核心库对外契约（M1 冻结，之后只增不改）</h3>
+<pre><code>// packages/core/src/index.ts （示意，M1 定稿）
+export function parseMarkdown(src: string, opts?: ParseOptions): MdxDocument;
+export function annotateRoles(doc: MdxDocument, opts?: RoleRules): RoleDocument;
+export function resolveStyles(theme: StyleTheme, doc: RoleDocument): ComputedStyles;
+export function renderHtml(doc: RoleDocument, styles: ComputedStyles): string;   // 预览与导出共用
+export function compileCss(styles: ComputedStyles): string;                      // 含 @page 规则
+export function exportPdf(html: string, css: string, opts?: PdfOptions): Promise&lt;Uint8Array&gt;;</code></pre>
+<p class="note">这份契约是后续所有后端的接口面：DOCX/Typst 后端只需消费 <code>StyleTheme</code> 与 <code>RoleDocument</code>，不必碰 <code>renderHtml</code>。</p>
+
+<h2 id="model"><span class="num">08</span>数据契约与语义层</h2>
+
+<h3>样式模型（示意，M1 定稿）</h3>
+<pre><code>{
+  "schemaVersion": 1,
+  "id": "thesis-cn",
+  "name": "中文学位论文",
+  "document": {
+    "page": { "size": "A4", "orientation": "portrait",
+              "margin": { "top": 25, "bottom": 25, "inner": 30, "outer": 20, "unit": "mm" },
+              "mirror": true },
+    "defaults": { "fontFamily": ["Source Han Serif SC", "Times New Roman", "serif"],
+                  "fontSize": 12, "lineHeight": 1.5, "textColor": "#111111" }
+  },
+  "styles": [
+    { "role": "heading.1", "basedOn": "body.text",
+      "font": { "family": ["Source Han Sans SC", "sans-serif"], "size": 18, "weight": 700, "color": "#000000" },
+      "paragraph": { "align": "center", "spaceBefore": 18, "spaceAfter": 12,
+                     "lineHeight": { "mode": "multiple", "value": 1.35 },
+                     "keepWithNext": true, "pageBreakBefore": true },
+      "border": { "bottom": { "style": "single", "width": 1, "color": "#8a8a8a" } },
+      "numbering": { "pattern": "第{chapter}章", "color": "#000000", "gap": 8 } }
+  ],
+  "overrides": [
+    { "target": "src/cover.md", "role": "body.text", "patch": { "paragraph": { "align": "center" } } }
+  ]
+}
+</code></pre>
+
+<h3>样式生效优先级（从高到低，实现必须与此一致）</h3>
+<table>
+  <thead><tr><th class="c">层</th><th>来源</th><th>示例</th><th>持久化位置</th></tr></thead>
+  <tbody>
+    <tr><td class="c">1</td><td>局部覆盖</td><td>这一段的正文居中</td><td>文档 <code>overrides</code></td></tr>
+    <tr><td class="c">2</td><td>角色样式（显式属性）</td><td>一级标题 = 黑体 18pt</td><td>样式包 <code>styles[]</code></td></tr>
+    <tr><td class="c">3</td><td>继承链（<code>basedOn</code>，最多 4 层）</td><td>一级标题基于「正文」</td><td>样式包</td></tr>
+    <tr><td class="c">4</td><td>文档默认值</td><td>全文字号 12pt</td><td>样式包 <code>document.defaults</code></td></tr>
+    <tr><td class="c">5</td><td>引擎兜底</td><td>浏览器默认样式</td><td>代码，不可配置</td></tr>
+  </tbody>
+</table>
+<p>约束：<code>basedOn</code> 链禁止成环（校验时报错并给出链路）、禁止跨类别继承（标题不能基于"图片"），单条样式的显式属性永远覆盖继承来的值。</p>
+
+<h3>单位与精度约定</h3>
+<table>
+  <thead><tr><th>量</th><th>内部单位</th><th>说明</th></tr></thead>
+  <tbody>
+    <tr><td>长度（缩进、边框、内边距）</td><td><code>pt</code></td><td>1pt = 1/72 inch；编译到 CSS 时保留 pt，避免 em 继承歧义</td></tr>
+    <tr><td>页面尺寸与页边距</td><td><code>mm</code></td><td>与纸张规格一致，UI 同时显示 cm/inch 换算</td></tr>
+    <tr><td>字号</td><td><code>pt</code></td><td>UI 提供"中文号数 ↔ pt"对照（小四 = 12pt，三号 = 16pt…）</td></tr>
+    <tr><td>行距</td><td>倍数 或 <code>pt</code></td><td>两种模式显式区分，禁止隐式混用</td></tr>
+    <tr><td>缩进"字符"语义</td><td><code>em</code>（相对当前字号）</td><td>"首行缩进 2 字符"编译为 <code>2em</code>，随字号正确缩放</td></tr>
+  </tbody>
+</table>
+
+<h3>语义层：Markdown 表达不了的语义怎么办</h3>
+<p>Markdown 原生只有标题/段落/列表/引用/代码/表格/图片。论文与公文场景还需要"摘要、关键词、图题、表题、参考文献条目、致谢"等可被单独配置样式的结构。方案：</p>
+<ol>
+  <li><b>容器指令</b>（remark-directive）：<code>::: abstract</code> … <code>:::</code>、<code>::: keywords</code>，渲染为 <code>section[data-role="abstract"]</code>。</li>
+  <li><b>YAML frontmatter</b>：<code>title / author / affiliation / date / toc: true</code>，映射到封面与页眉页脚的文档元数据。</li>
+  <li><b>自动角色识别（启发式，可在 UI 里关闭）</b>：紧邻图片的斜体段落 → 图题；以「表 x-x」开头的段落 → 表题；位于「参考文献/References」标题之后的编号段落 → 参考文献条目。</li>
+  <li><b>优雅降级</b>：所有扩展语法在普通 Markdown 阅读器里仍应呈现出可读结果（例如 <code>::: abstract</code> 降级为普通段落/引用），保证文档不被工具锁死。</li>
+</ol>
+<div class="callout">
+  <p><b>注意：</b>自动识别必须有"这条段落被识别成了什么角色"的可视反馈，并且用户能一键改判。否则用户会陷入"样式改了却看不到效果，因为那段其实被判成别的角色"的困惑——这是这类工具最常见的使用挫折。</p>
+</div>
+
+<h2 id="ux"><span class="num">09</span>界面线框（低保真）</h2>
+<p class="note">线框仅用于确认布局与信息架构，不代表最终视觉设计。三个核心界面：主工作台、样式管理器、样式包面板。</p>
+
+<h3>主工作台：源码 / 分页预览 / 样式检查器</h3>
+<div class="wf">
+  <div class="wf-bar">
+    <b>工具栏</b>
+    <span>新建</span><span>打开</span><span>样式包 ▾</span><span>分栏布局</span>
+    <span style="margin-left:auto">缩放 100% ▾</span><span>导出 PDF ▾</span>
+  </div>
+  <div class="wf-cols">
+    <div class="wf-col">
+      <div class="wf-tag">① 源码 · CodeMirror 6</div>
+      <div class="wf-line h2"></div>
+      <div class="wf-line m"></div>
+      <div class="wf-line"></div>
+      <div class="wf-line m"></div>
+      <div class="wf-line s"></div>
+      <div class="wf-box">光标所在段落 → 高亮③中对应角色</div>
+      <div class="wf-line"></div>
+      <div class="wf-line m"></div>
+    </div>
+    <div class="wf-col">
+      <div class="wf-tag">② 分页预览 · Paged.js（可点击元素）</div>
+      <div class="wf-page">
+        <div class="wf-line h1"></div>
+        <div class="wf-line"></div><div class="wf-line m"></div><div class="wf-line"></div>
+        <div class="wf-line s"></div>
+        <div class="foot"><span>页眉：文档标题</span><span>1 / 12</span></div>
+      </div>
+      <div class="wf-page">
+        <div class="wf-line h2"></div>
+        <div class="wf-line m"></div><div class="wf-line"></div>
+        <div class="foot"><span>页眉：文档标题</span><span>2 / 12</span></div>
+      </div>
+    </div>
+    <div class="wf-col">
+      <div class="wf-tag">③ 样式检查器（当前选中角色）</div>
+      <div class="wf-row on"><span>一级标题 heading.1</span><span>▾</span></div>
+      <div class="wf-row"><span>字体 Family</span><span>思源黑体 ▾</span></div>
+      <div class="wf-row"><span>字号 / 字重</span><span>18pt · 700</span></div>
+      <div class="wf-row"><span>颜色</span><span><span class="wf-swatch" style="background:#111"></span> #111111</span></div>
+      <div class="wf-row"><span>对齐 / 行距</span><span>居中 · 1.35 倍</span></div>
+      <div class="wf-row"><span>段前 / 段后</span><span>18pt / 12pt</span></div>
+      <div class="wf-row"><span>下边框</span><span>1pt 单线 #8a8a8a</span></div>
+      <div class="wf-box">「基于：正文 → 文档默认」继承链可视化</div>
+      <div class="wf-box">高级：自定义 CSS 覆盖（逃生舱，默认折叠）</div>
+    </div>
+  </div>
+</div>
+
+<h3>样式管理器（Word 式）</h3>
+<div class="wf">
+  <div class="wf-bar"><b>样式管理器</b><span>样式包：中文学位论文 ▾</span><span style="margin-left:auto">导入 · 导出 · 另存为</span></div>
+  <div class="wf-cols">
+    <div class="wf-col">
+      <div class="wf-tag">角色树</div>
+      <div class="wf-row on"><span>标题</span><span>▾</span></div>
+      <div class="wf-row" style="padding-left:18px"><span>一级标题</span><span>18pt</span></div>
+      <div class="wf-row" style="padding-left:18px"><span>二级标题</span><span>16pt</span></div>
+      <div class="wf-row on"><span>正文</span><span>▾</span></div>
+      <div class="wf-row" style="padding-left:18px"><span>正文段落</span><span>12pt</span></div>
+      <div class="wf-row" style="padding-left:18px"><span>列表项 / 项目符号</span></div>
+      <div class="wf-row" style="padding-left:18px"><span>引用块</span></div>
+      <div class="wf-row"><span>图片与题注</span><span>▸</span></div>
+      <div class="wf-row"><span>表格</span><span>▸</span></div>
+      <div class="wf-row"><span>页面 / 页眉页脚</span><span>▸</span></div>
+    </div>
+    <div class="wf-col">
+      <div class="wf-tag">样式实时样本（用当前文档文字渲染）</div>
+      <div class="wf-box" style="font-size:19px;font-weight:700;color:var(--ink)">第一章 绪论</div>
+      <div class="wf-box">正文段落预览：这是使用当前样式渲染的一段中文正文，用于直观判断字号与行距。</div>
+      <div class="wf-box" style="font-size:12px;color:var(--muted)">图 3-1 系统总体架构图</div>
+      <div class="wf-box">表 3-1 参数对照表（表头 / 斑马纹 / 三线表）</div>
+      <div class="wf-box">· 列表项符号与缩进预览</div>
+    </div>
+    <div class="wf-col">
+      <div class="wf-tag">属性面板（分组折叠）</div>
+      <div class="wf-row on"><span>字体</span><span>▾</span></div>
+      <div class="wf-row on"><span>段落与缩进</span><span>▾</span></div>
+      <div class="wf-row on"><span>边框与底纹</span><span>▾</span></div>
+      <div class="wf-row"><span>编号与列表</span><span>▸</span></div>
+      <div class="wf-row"><span>分页与孤行</span><span>▸</span></div>
+      <div class="wf-row"><span>条件的（奇偶页 / 首页）</span><span>▸</span></div>
+      <div class="wf-box">「基于」下拉 + 「重置为继承值」按钮</div>
+      <div class="wf-box">每个控件旁有"已修改 / 继承自"状态点</div>
+    </div>
+  </div>
+</div>
+
+<h3>样式包面板</h3>
+<div class="wf">
+  <div class="wf-bar"><b>样式包</b><span>内置预设</span><span>我的样式包</span><span style="margin-left:auto">从 JSON 导入</span></div>
+  <div class="wf-cols" style="grid-template-columns:repeat(4,1fr)">
+    <div class="wf-col"><div class="wf-box" style="height:96px">技术文档<br><span class="note">无衬线 · 紧凑</span></div></div>
+    <div class="wf-col"><div class="wf-box" style="height:96px">学位论文<br><span class="note">宋体 · 三线表</span></div></div>
+    <div class="wf-col"><div class="wf-box" style="height:96px">公文格式<br><span class="note">方正小标宋风格</span></div></div>
+    <div class="wf-col"><div class="wf-box" style="height:96px">简约预览<br><span class="note">屏幕阅读友好</span></div></div>
+  </div>
+</div>
+
+<h2 id="roadmap"><span class="num">10</span>路线图</h2>
+<div class="seq">
+  <span class="now">M0 技术验证</span><span>M1 渲染内核与样式模型</span><span>M2 编辑/预览工作台</span><span>M3 样式管理器</span><span>M4 文档特性与导出</span><span>M5 扩展后端与生态</span>
+</div>
+<p class="note">时长按"单人全职"估算，用于排序与切分，不是交付承诺。M1 与 M2 的文件树搭建可部分并行；M5 完全可切（不影响前五个里程碑的价值交付）。</p>
+
+<div class="phase">
+  <div class="head"><h3>M0 · 渲染内核技术验证（先证伪，再投入）</h3><span class="pill warn">最高优先级</span><span class="est">0.5–1 周</span></div>
+  <div class="body">
+    <p class="kv"><b>目的：</b>渲染引擎已确认使用 Chromium（§5 D1），因此 M0 的任务从"选引擎"变成"验证 Chromium + Paged.js 能否满足分页级需求"，并顺带回答 §5 的 D4（Paged.js 还是原生分页）。</p>
+    <p class="kv"><b>载体：</b>用最省事的方式跑——纯浏览器页面 + 命令行导出（见 §14），<b>不必先搭 Electron 工程</b>。宿主选型推迟到 M2 开工前（§5 D1b），M0 不因壳的选择而空转。</p>
+    <h4>验证清单（每条都要有可复现的 demo 与结论文档）</h4>
+    <ol>
+      <li>Markdown → HTML → Paged.js 分页 → Electron <code>printToPDF</code>，产出多页 PDF，页码与总页数正确。</li>
+      <li>自定义页眉/页脚（左中右分区、奇偶页不同、首页不同）在 Paged.js 中可实现到什么程度。</li>
+      <li>目录页号：<code>target-counter(attr(href), page)</code> 是否可用、刷新后是否准确。</li>
+      <li>中文字体：思源宋体/黑体子集嵌入后文本可复制、无 tofu；中英混排行距表现。</li>
+      <li>跨页控制：长表格表头重复、图片不被拆分、标题不服输在页尾、脚注跨页。</li>
+      <li>性能基准：1 / 20 / 100 / 300 页文档，分页耗时与内存曲线；确定"分块分页 + 虚拟化"是否必需。</li>
+      <li>对照方案：同一文档用"原生 <code>@page</code> + Electron 页眉页脚模板"导出，比较能力缺口与耗时。</li>
+      <li>样式模型注入：用一份 JSON 驱动 CSS 变量生成样式表，验证"改数据即改版式"的链路可行。</li>
+    </ol>
+    <p class="kv"><b>产出：</b><code>docs/plans/m0-render-spike-findings.md</code>（含结论、截图、耗时数据、最终选型）+ <code>spikes/render-demo/</code> 可运行 demo。</p>
+    <p class="kv"><b>退出条件：</b>D4 明确成立或不成立；若 Paged.js 在 300 页性能或分页特性上不可接受，回到 §5 的候选 E（自研分页）并重估工期。</p>
+    <p class="kv"><b>回滚：</b>M0 只新增 <code>spikes/</code> 与文档目录，不改动仓库既有内容，失败成本可控。</p>
+  </div>
+</div>
+
+<div class="phase">
+  <div class="head"><h3>M1 · 渲染内核与样式模型</h3><span class="est">1.5–2 周</span></div>
+  <div class="body">
+    <ul>
+      <li>搭 monorepo（npm workspaces）+ TypeScript strict + vitest + ESLint/Prettier。</li>
+      <li><code>packages/theme-schema</code>：样式模型类型、JSON Schema、校验（含 <code>basedOn</code> 环检测与跨类继承拒绝）、版本迁移骨架。</li>
+      <li><code>packages/core</code>：解析 → 角色化 → 样式解析（继承 + 覆盖 + 默认）→ HTML 渲染 → CSS 编译。锁定 §7 的对外契约。</li>
+      <li>语义层 v1：frontmatter、容器指令、图题/表题/参考文献的启发式识别 + 角色回退。</li>
+      <li>确定性与安全：同一输入必得同一输出（可快照）；原始 HTML 走消毒白名单。</li>
+    </ul>
+    <p class="kv"><b>验收：</b>核心库单测覆盖率 ≥ 85%；golden CSS/AST 快照测试通过；CLI 雏形 <code>stylemd render doc.md --theme x.json</code> 能输出完整 HTML；同一输入两次运行输出字节一致。</p>
+  </div>
+</div>
+
+<div class="phase">
+  <div class="head"><h3>M2 · 编辑 / 预览工作台</h3><span class="est">2 周</span></div>
+  <div class="body">
+    <ul>
+      <li><b>开工前先定壳</b>（§5 D1b 的四选一，默认 Electron）；随后主进程 + React 渲染层 + Vite 构建，本地文件打开/保存/最近文件/自动保存与崩溃恢复。</li>
+      <li>CodeMirror 6 源码编辑器（Markdown 语法高亮、快捷键、大纲面板）。</li>
+      <li>Paged.js 分页预览：纸页视图、缩放、翻页跳转、当前编辑段落定位。</li>
+      <li>双向定位：光标 → 预览高亮；点击预览元素 → 关联到角色与源码位置。</li>
+      <li>增量渲染调度（防抖 + 只重排受影响页）——性能预算的第一道防线。</li>
+    </ul>
+    <p class="kv"><b>验收：</b>50 页文档编辑时输入延迟 &lt; 50ms，预览刷新 ≤ 300ms；滚动到第 N 页时内存不随页数线性增长。</p>
+  </div>
+</div>
+
+<div class="phase">
+  <div class="head"><h3>M3 · 样式管理器（产品价值的核心）</h3><span class="pill">差异化</span><span class="est">2–3 周</span></div>
+  <div class="body">
+    <ul>
+      <li>样式管理器对话框：角色树 + 实时样本 + 分组属性面板（§6 中 M3 标记的全部控件）。</li>
+      <li>继承关系可视化（"基于：一级标题 ← 正文 ← 文档默认"）、重置为继承值、复制样式、新建衍生样式。</li>
+      <li>属性控件族：字体选择器（本地字体枚举 + 可用字重）、数值输入（含单位与中文号数对照）、颜色选择器（含调色板与自定义）、四边边框编辑器、底纹选择器。</li>
+      <li>样式包：导入/导出/另存为/内置预设（技术文档、学位论文、公文、简约）；未知字段向前兼容保留。</li>
+      <li>"已修改 / 继承"状态提示；误操作可撤销（样式变更有全局 undo 栈）。</li>
+    </ul>
+    <p class="kv"><b>验收：</b>DoD #1 通过（全程不写 CSS 完成一级标题的六项调整）；样式包往返测试无损；导入非法 JSON 给出可读报错而非崩溃。</p>
+  </div>
+</div>
+
+<div class="phase">
+  <div class="head"><h3>M4 · 文档级特性与导出</h3><span class="est">2 周</span></div>
+  <div class="body">
+    <ul>
+      <li>页面设置 UI（纸张/方向/页边距/镜像/分栏/背景）与页眉页脚编辑器（域：页码、总页数、标题、日期）。</li>
+      <li>目录生成与页号、页码格式与重新起始、封面独立页面设置。</li>
+      <li>图题/表题/公式编号与章节联动、交叉引用。</li>
+      <li>导出：PDF（一键、无对话框）、当前页 PNG、自包含 HTML；导出前预检（字体缺失、图表超页、孤立标题警告）。</li>
+      <li>CLI：<code>stylemd export doc.md --theme x.json -o out.pdf</code>，支持批量目录。</li>
+    </ul>
+    <p class="kv"><b>验收：</b>DoD #2–#5、#8、#10 全部通过；视觉回归用例集纳入 CI。</p>
+  </div>
+</div>
+
+<div class="phase">
+  <div class="head"><h3>M5 · 扩展后端与生态（可切，非阻塞）</h3><span class="est">3 周+</span></div>
+  <div class="body">
+    <ul>
+      <li>DOCX 后端：样式模型 → <code>styles.xml</code>，尽力映射，声明不保证逐像素一致；导出后可继续在 Word 里编辑。</li>
+      <li>Typst 后端（可选）：为追求更高排版质量的用户提供第二条通道，复用同一份样式模型。</li>
+      <li>样式包分享（本地文件交换 → 社区目录）、样式包导入转换器（从现有 CSS 主题尽力转换）。</li>
+      <li>图文环绕、脚注/尾注的完整实现（取决于 M0 结论）。</li>
+    </ul>
+  </div>
+</div>
+
+<h2 id="qa"><span class="num">11</span>验证策略</h2>
+<table>
+  <thead><tr><th>层次</th><th>手段</th><th>工具</th><th>门槛 / 判据</th></tr></thead>
+  <tbody>
+    <tr><td>单元</td><td>样式解析、继承链、单位换算、编号格式、角色识别启发式</td><td>vitest</td><td><code>packages/core</code> 覆盖率 ≥ 85%，新增分支必须有用例</td></tr>
+    <tr><td>快照</td><td>AST → HTML、样式模型 → CSS 的黄金文件对比</td><td>vitest snapshot</td><td>变更需在评审中显式确认（防止样式回归悄悄发生）</td></tr>
+    <tr><td>视觉回归</td><td>固定用例文档 → PDF → 位图对比</td><td>Playwright + PDF 光栅化 + 位图 diff</td><td>像素差异 &lt; 0.5%；超出即失败并附差异图</td></tr>
+    <tr><td>分页边界用例集</td><td>20+ 固定文档：长表格跨页、图贴页底、标题落在页尾、脚注密集、超长 URL、CJK 标点避头尾、中英混排、超宽表格、空段落、超长列表、嵌套引用</td><td><code>fixtures/</code></td><td>每个用例都有人工核对过的"期望行为"说明</td></tr>
+    <tr><td>性能基准</td><td>1 / 20 / 100 / 300 页文档的分页耗时与内存</td><td>自建基准脚本</td><td>300 页完整分页 ≤ 30s，首屏 ≤ 5s，峰值内存 ≤ 1.5GB</td></tr>
+    <tr><td>字体矩阵</td><td>Windows / macOS 字体枚举差异、字重缺失回退、中文标点</td><td>多机手工 + 脚本</td><td>v1 至少在 Windows 11 上全量核对，macOS 记录已知差异</td></tr>
+    <tr><td>端到端</td><td>5 条核心用户旅程（打开→套样式→改样式→预览→导出→复用样式包）</td><td>Playwright 驱动 Electron</td><td>每次 PR 全绿；失败必须附截图与导出产物</td></tr>
+    <tr><td>安全</td><td>原始 HTML/脚本注入、超长输入、畸形样式包、路径穿越（样式包引用本地文件）</td><td>vitest + 手工</td><td>无任意代码执行；导出进程禁用 Node 集成与网络</td></tr>
+  </tbody>
+</table>
+<p class="note">关于"两个检测源对不上"的常见坑：视觉回归必须是"预览截图 vs PDF 光栅化"的对照，而不是"两次导出 PDF 对比"——后者只能证明确定性，不能证明所见即所得。</p>
+
+<h2 id="risks"><span class="num">12</span>风险与对策</h2>
+<table>
+  <thead><tr><th>风险</th><th class="c">概率</th><th class="c">影响</th><th>缓解措施</th><th>兜底方案</th></tr></thead>
+  <tbody>
+    <tr>
+      <td>Paged.js 长文档性能不可接受（300 页卡顿）</td><td class="c">中</td><td class="c">高</td>
+      <td>M0 先测；分块分页 + 虚拟化预览；编辑时只重排当前页附近</td>
+      <td>回退原生浏览器分页 + 页眉页脚模板；或评估自研分页</td>
+    </tr>
+    <tr>
+      <td>分页特性覆盖不足（表格跨页表头、脚注、图文环绕）</td><td class="c">高</td><td class="c">中</td>
+      <td>UI 对 ⚠ 项显式标注"尽力而为"；建立分页边界用例集持续跟踪</td>
+      <td>把该能力降级为 M5，或以"导出后手动微调"说明替代</td>
+    </tr>
+    <tr>
+      <td>中文字体：字重缺失、合成粗体、标点避头尾不符预期</td><td class="c">高</td><td class="c">中</td>
+      <td>内置开源中文字体（思源系）；字体可用性检测与缺失告警；提供字重回退策略</td>
+      <td>允许绑定本机字体；导出前预检并提示替换</td>
+    </tr>
+    <tr>
+      <td>预览与导出逐渐漂移（两条渲染路径）</td><td class="c">中</td><td class="c">高</td>
+      <td>硬约束：共用 <code>renderHtml</code>；视觉回归纳入 CI 必过项</td>
+      <td>若漂移发生，以 PDF 为准并暂停发版直到回归恢复</td>
+    </tr>
+    <tr>
+      <td>样式模型设计不当，后续无法扩展（最大长期风险）</td><td class="c">中</td><td class="c">高</td>
+      <td>M1 阶段先把"Word 概念 → 模型"映射表定稿并写进文档；模型里禁止出现 CSS 字符串；schemaVersion 与迁移机制从第一天就在</td>
+      <td>模型小幅演进用迁移脚本；大改则并行引入 v2 并双读一段时间</td>
+    </tr>
+    <tr>
+      <td>与 Word 心理预期不一致（用户以为行为应该一样）</td><td class="c">中</td><td class="c">中</td>
+      <td>文档明确差异清单（编号模型、图文环绕、样式覆盖范围）；界面用语与 Word 保持一致以降低学习成本</td>
+      <td>DOCX 导出作为"要 Word 就去 Word"的出口</td>
+    </tr>
+    <tr>
+      <td>Electron 安装包体积与启动速度被用户抱怨</td><td class="c">中</td><td class="c">低</td>
+      <td>对比 Typora/Obsidian 的既有接受度；按需加载预览模块</td>
+      <td>提供"轻量 CLI + 浏览器版预览"的替代路径</td>
+    </tr>
+    <tr>
+      <td>Markdown 原始 HTML 带来的安全面（本地文件读取、注入）</td><td class="c">低</td><td class="c">高</td>
+      <td>渲染期消毒白名单；预览用 sandbox 化 WebView，禁用 Node 集成；导出进程无网络</td>
+      <td>默认禁用原始 HTML，需在设置中显式开启</td>
+    </tr>
+    <tr>
+      <td>字体与依赖许可问题影响分发</td><td class="c">低</td><td class="c">中</td>
+      <td>只打包可再分发字体；集中维护第三方许可清单</td>
+      <td>改为"引导用户安装字体"而不随包分发</td>
+    </tr>
+    <tr>
+      <td>范围蔓延（一路做到 DOCX/插件/云同步）</td><td class="c">高</td><td class="c">高</td>
+      <td>以 DoD 十项为唯一交付口径；M5 明确标为可切</td>
+      <td>每季度重排一次优先级，未进 DoD 的需求默认进 backlog</td>
+    </tr>
+  </tbody>
+</table>
+
+<h2 id="delivery"><span class="num">13</span>工程实践与交付</h2>
+<table>
+  <thead><tr><th>方面</th><th>约定</th></tr></thead>
+  <tbody>
+    <tr><td>包管理 / 工作区</td><td>npm 原生 workspaces（本机无 pnpm/yarn；PowerShell 禁用 <code>npm.ps1</code>，命令一律用 <code>npm.cmd</code>）</td></tr>
+    <tr><td>语言与质量</td><td>TypeScript <code>strict: true</code>、ESLint + Prettier、vitest、Playwright</td></tr>
+    <tr><td>分支与提交</td><td>主干开发 + 短分支（<code>feat/…</code>）；提交信息 Conventional Commits；变更集记录样式模型 schema 变化</td></tr>
+    <tr><td>CI</td><td>GitHub Actions：Windows + Linux 双跑（lint / 单测 / 快照 / 视觉回归 / 性能基准 / CLI 冒烟）；PR 必须全绿</td></tr>
+    <tr><td>打包分发</td><td>electron-builder 产出 Windows 安装包与免安装版；macOS/Linux 视需求跟进；代码签名证书在正式分发前确定</td></tr>
+    <tr><td>自动更新</td><td>v1 可先做"检查更新 + 提示下载"，避免更新通道带来的复杂度</td></tr>
+    <tr><td>数据与隐私</td><td>默认纯本地、无遥测；如需崩溃上报则显式 opt-in 并写明收集内容</td></tr>
+    <tr><td>国际化</td><td>界面文案抽离为资源文件；v1 提供简体中文，预留英文（术语表统一：样式 / 样式包 / 角色 / 分页预览）</td></tr>
+    <tr><td>文档</td><td><code>docs/</code>：用户指南、样式模型参考（每个字段的含义与单位）、与 Word 的差异清单、常见问题（"改了样式没效果" = 角色识别问题）</td></tr>
+    <tr><td>发布节奏</td><td>每个里程碑结束出一个内部可试用版本；M3 结束后可发 <code>0.x</code> 预发布给真实用户试用</td></tr>
+  </tbody>
+</table>
+
+<h2 id="handoff"><span class="num">14</span>实施交接摘要</h2>
+<h3>如果要立刻开始，前两周就做这些</h3>
+<div class="card">
+  <h4>第 1 周：M0 技术验证</h4>
+  <ol>
+    <li>建脚手架与 spike 目录（先不建完整 monorepo，避免过早结构设计）：
+      <pre><code>git checkout -b feat/m0-render-spike
+npm.cmd init -y
+npm.cmd i -D typescript vitest @types/node electron vite
+npm.cmd i markdown-it pagedjs katex shiki</code></pre>
+    </li>
+    <li>按 §10 M0 的 8 条清单逐条做 demo，每条记录：能否实现 / 用时 / 截图 / 限制。</li>
+    <li>性能基准脚本跑 1/20/100/300 页，记录分页耗时与峰值内存。</li>
+    <li>产出 <code>docs/plans/m0-render-spike-findings.md</code>，明确 D1 结论与 D4（分页内核）答案。</li>
+  </ol>
+  <h4>第 2 周：M1 起步</h4>
+  <ol>
+    <li>按 §7 建 monorepo（<code>packages/theme-schema</code>、<code>packages/core</code>、<code>apps/desktop</code>），配置 strict TS 与 vitest。</li>
+    <li>写 <code>theme-schema</code>：先把 §8 的 JSON 示例变成可校验的类型与 JSON Schema。</li>
+    <li>写 <code>core</code> 的样式解析（继承链 + 覆盖 + 默认）与其单测——这是最值得先写测试、后写 UI 的部分。</li>
+  </ol>
+</div>
+
+<h3>需要项目所有者确认的输入（阻塞点）</h3>
+<ul>
+  <li><b>Q1 宿主形态</b>（默认：Electron 桌面）——不再阻塞 M0 / M1（M0 用浏览器原型，M1 只写核心库），<b>但阻塞 M2 开工</b>。</li>
+  <li><b>Q2 首要场景</b>（默认：技术文档 + 学位论文双预设）——影响语义层与内置样式包。</li>
+  <li><b>Q3 DOCX 范围</b>（默认：v1 不做）——影响 M5 排期。</li>
+  <li><b>Q4 分页内核</b>：由 M0 用数据回答，不阻塞开工。</li>
+</ul>
+
+<h3>开工前建议核对的竞品事实（本次未联网核验）</h3>
+<ul>
+  <li>Paged.js 当前版本对 <code>target-counter</code>、脚注 polyfill、表格跨页的实际支持情况。</li>
+  <li>Electron 当前版本 <code>printToPDF</code> 对自定义页眉页脚模板的能力边界（是否与 Paged.js 重复/冲突）。</li>
+  <li>Typora / Markdown Preview Enhanced / Vivliostyle 在"样式自定义"上的最新交互，确认差异化定位仍然成立。</li>
+</ul>
+
+<h2 id="appendix"><span class="num">15</span>附录</h2>
+<h3>候选依赖清单（M0 验证时确认最终版本）</h3>
+<table>
+  <thead><tr><th>用途</th><th>候选</th><th>备注</th></tr></thead>
+  <tbody>
+    <tr><td>Markdown 解析</td><td>remark / unified 生态，或 markdown-it</td><td>需要指令（容器）扩展能力 → remark-directive 更顺手；GFM 表格、脚注需对应插件</td></tr>
+    <tr><td>分页</td><td>Paged.js</td><td>CSS Paged Media 的浏览器内实现，是本方案的技术前提</td></tr>
+    <tr><td>桌面壳与导出</td><td>Electron（<code>webContents.printToPDF</code>）</td><td>本机无 Rust，Electron 是唯一省事的路径；CLI 侧可用 Playwright</td></tr>
+    <tr><td>编辑器</td><td>CodeMirror 6</td><td>体积小、可扩展、Markdown 模式成熟</td></tr>
+    <tr><td>语法高亮</td><td>Shiki</td><td>生成内联样式 token，天然贴合样式模型</td></tr>
+    <tr><td>数学公式</td><td>KaTeX</td><td>渲染为 HTML，样式可控</td></tr>
+    <tr><td>UI</td><td>React + Vite</td><td>组件化利于样式检查器这类大量控件的界面</td></tr>
+    <tr><td>字体（内置候选）</td><td>思源宋体 / 思源黑体 / Noto Sans SC / Times New Roman 替代（Liberation Serif）</td><td>须为可再分发许可</td></tr>
+    <tr><td>测试</td><td>vitest / Playwright / 位图 diff 工具</td><td>视觉回归依赖 PDF 光栅化能力</td></tr>
+  </tbody>
+</table>
+
+<h3>术语表</h3>
+<table>
+  <thead><tr><th>术语</th><th>含义</th></tr></thead>
+  <tbody>
+    <tr><td>角色（role）</td><td>文档结构的语义标识，如 <code>heading.1</code>、<code>body.text</code>、<code>figure.caption</code>。样式挂在角色上。</td></tr>
+    <tr><td>样式模型</td><td>描述"角色 → 属性"的纯数据（JSON），不含任何 CSS 字符串，可迁移到不同渲染后端。</td></tr>
+    <tr><td>样式包（theme）</td><td>一次可分发的样式模型实例，文件后缀 <code>*.stylemd.json</code>。</td></tr>
+    <tr><td>基于（basedOn）</td><td>样式之间的继承关系，类似 Word 的"样式基于"。</td></tr>
+    <tr><td>分页预览</td><td>把 HTML 切成真实纸页尺寸的预览，与导出的 PDF 对应页一致。</td></tr>
+    <tr><td>域（field）</td><td>页眉页脚中会自动求值的占位内容，如页码、总页数、文档标题、日期。</td></tr>
+  </tbody>
+</table>
+
+<h3>来源清单</h3>
+<ul>
+  <li><code>E:\projects\StyleMD\README.md</code>（134 字节，产品一句话描述）</li>
+  <li><code>git log --oneline</code> / <code>git status --short</code>：仅 <code>83df2d4 Initial commit</code>，工作区干净</li>
+  <li><code>git branch --show-current</code> = <code>main</code>；<code>remote.origin.url</code> = <code>git@github.com:HuajiMX/StyleMD.git</code></li>
+  <li>本机工具链探测（2026-09-30）：Node v24.11.1 可用；<code>npm.ps1</code> 被执行策略禁止；无 Rust/Cargo；<code>pandoc</code> 存在于 Anaconda 路径</li>
+  <li><b>未能访问：</b>竞品功能对比（§3）未做在线核验；本次网络访问不稳定，仅完成下列定向核验</li>
+</ul>
+
+<h3>外部资料（2026-09-30 定向联网核验）</h3>
+<table>
+  <thead><tr><th>核验到的结论</th><th>来源</th></tr></thead>
+  <tbody>
+    <tr><td>Electron 提供 <code>webContents.printToPDF(options)</code>，支持 <code>landscape</code> / <code>pageSize</code> / <code>margins</code> / <code>printBackground</code> / <code>displayHeaderFooter</code> / <code>scale</code></td><td><code>https://www.electronjs.org/docs/latest/api/web-contents</code></td></tr>
+    <tr><td>Electron 官方分发包体积：v44.5.1 win32-x64 = 150.7 MB、darwin-arm64 = 124.2 MB、darwin-x64 = 128.0 MB、linux-x64 = 117.2 MB</td><td><code>https://api.github.com/repos/electron/electron/releases/latest</code> 的 assets 字段</td></tr>
+    <tr><td>Tauri 在 Windows 使用 WebView2（"which is based on Microsoft Edge and therefore Chromium"，且随系统更新），macOS 使用 WKWebView、Linux 使用 webkit2gtk；"Tauri does not bundle a WebView with your app"</td><td><code>https://v2.tauri.app/reference/webview-versions/</code></td></tr>
+    <tr><td>Tauri 的 WebviewWindow API 只提供 <code>print</code>（触发打印），没有导出 PDF 的接口；Rust 侧提供 <code>with_webview</code> 逃生舱用于访问平台 WebView 原生接口</td><td><code>https://v2.tauri.app/reference/javascript/api/namespacewebviewwindow/</code> · <code>https://docs.rs/tauri/latest/tauri/webview/struct.WebviewWindow.html</code></td></tr>
+    <tr><td>WebView2 提供 <code>ICoreWebView2_7::PrintToPdfAsync</code>（Windows 上 Tauri 自行实现 PDF 导出的可行性依据）</td><td><code>https://learn.microsoft.com/en-us/microsoft-edge/webview2/reference/win32/icorewebview2_7</code></td></tr>
+    <tr><td>Qt 提供 <code>QWebEnginePage::printToPdf()</code>（含 Functor 重载）</td><td><code>https://doc.qt.io/qt-6/qwebenginepage.html</code></td></tr>
+    <tr><td>Qt WebEngine 分发体积参考：<code>pyside6_addons-6.11.2-cp310-abi3-win_amd64.whl</code> = 160.4 MB</td><td><code>https://pypi.org/pypi/PySide6-Addons/json</code></td></tr>
+    <tr><td>electron-builder 的 <code>electronLanguages</code> 会删除未匹配的 <code>locales/*.pak</code>（macOS 为 <code>.lproj</code>），并在"全部语言都被判为不需要"时跳过清理以避免产出无法启动的应用</td><td><code>electron-builder</code> 源码 <code>packages/app-builder-lib/src/electron/ElectronFramework.ts</code></td></tr>
+  </tbody>
+</table>
+
+<footer>
+  StyleMD 开发规划 v1 · 生成于 2026-09-30 · 规划文档，未包含实现代码。<br>
+  下一步：读 <a href="m0-render-spike-findings.md">M0 验证结论</a>，确认 §2 的 Q2 / Q3，进入 M1 的目录、图表编号与交叉引用。
+</footer>
+
+</div>
+</body>
+</html>

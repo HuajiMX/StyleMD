@@ -1,0 +1,27 @@
+{
+  "name": "stylemd",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "description": "A visual style manager for Markdown, with Word-like style configuration for headings, paragraphs, lists and more.",
+  "workspaces": [
+    "packages/*",
+    "apps/*"
+  ],
+  "scripts": {
+    "dev": "npm run dev -w @stylemd/demo",
+    "build": "npm run build -w @stylemd/demo",
+    "preview": "npm run preview -w @stylemd/demo",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "tsc --noEmit",
+    "cli": "tsx apps/cli/src/cli.ts"
+  },
+  "devDependencies": {
+    "@types/node": "^22.10.2",
+    "playwright-core": "^1.63.0",
+    "tsx": "^4.23.15",
+    "typescript": "^5.7.2",
+    "vitest": "^5.0.3"
+  }
+}
