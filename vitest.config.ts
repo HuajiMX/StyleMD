@@ -9,6 +9,7 @@ export default defineConfig({
       '@stylemd/theme-schema': resolvePath('./packages/theme-schema/src/index.ts'),
       '@stylemd/presets': resolvePath('./packages/presets/src/index.ts'),
       '@stylemd/core': resolvePath('./packages/core/src/index.ts'),
+      '@stylemd/editor-theme': resolvePath('./packages/editor-theme/src/index.ts'),
     },
   },
   test: {

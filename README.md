@@ -43,8 +43,9 @@ npm.cmd run cli -- check my-theme.json
 packages/theme-schema    样式模型：类型、角色注册表、校验、版本迁移（纯数据，无 CSS 字符串）
 packages/core            渲染内核：解析 → 角色化 → 样式解析 → HTML → CSS（无 UI、无宿主依赖）
 packages/presets         内置样式包：技术文档 / 中文学位论文
+packages/editor-theme    编辑器配色：14 个色槽、5 套预设、色值校验、对比度计算、版本迁移（纯数据）
 packages/renderer-paged  Paged.js 集成（纯字符串进、纯字符串出）
-apps/demo                浏览器工作台：源码 / 分页预览 / 样式检查器（React + Vite）
+apps/demo                浏览器工作台：源码（CodeMirror 6）/ 分页预览 / 样式检查器（React + Vite）
 apps/cli                 命令行入口（tsx）
 e2e                      Chromium 端到端冒烟与导出检查
 examples                 示例文档
@@ -63,5 +64,9 @@ docs/plans               开发规划与 M0 验证结论
 等样式属性、`@page` 纸张与页边距、页眉页脚域、标题自动编号、分页预览（Paged.js）、PDF 打印、样式包导入导出、
 CLI 渲染与校验，以及输入安全默认值（原始 HTML 转义、链接协议白名单、样式包严格校验、预览 iframe 沙箱 + CSP）。
 
-未实现（见规划中的里程碑）：目录与页码联动、图表编号与交叉引用、代码高亮、脚注、图文环绕、
+编辑器侧已实现：CodeMirror 6 源码编辑器、Markdown 语法高亮、光标所在结构在源码里高亮、编辑器配色方案
+（5 套内置预设：纸感 / 鲜明 / 黑白 / 夜读 / 高对比，支持自定义、导入导出、对比度提示；独立于文档样式包，
+不影响预览与导出）。
+
+未实现（见规划中的里程碑）：目录与页码联动、图表编号与交叉引用、渲染输出侧的代码块高亮（Shiki）、脚注、图文环绕、
 DOCX / Typst 后端、桌面壳打包。

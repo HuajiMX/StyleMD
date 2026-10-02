@@ -13,6 +13,7 @@ import {
   type StyleTheme,
 } from '@stylemd/theme-schema'
 import { BUILT_IN_THEMES } from '@stylemd/presets'
+import type { EditorScheme, EditorTokenName } from '@stylemd/editor-theme'
 import {
   Combo,
   Field,
@@ -33,6 +34,7 @@ import {
   IconIndentDecrease,
   IconIndentIncrease,
   IconLineSpacing,
+  IconPalette,
   IconReset,
   IconUndo,
 } from './icons'
@@ -366,6 +368,64 @@ export function EditGroup({
         <IconButton label="撤销样式修改" disabled={!canUndo} onClick={onUndo}>
           <IconUndo />
         </IconButton>
+      </div>
+    </RibbonGroup>
+  )
+}
+
+/**
+ * 编辑器配色：直接把配色方案铺在工具带上，点一下即切换，不用先开窗。
+ *
+ * 只改源码区自己的观感，跟文档样式包是两回事，所以控件上跟样式包分组隔开；
+ * 需要逐色槽细调或导入导出时，再走最右边的「自定义…」。
+ */
+export function EditorSchemeGroup({
+  schemes,
+  activeId,
+  hiddenCount,
+  onSelect,
+  onOpen,
+}: {
+  schemes: EditorScheme[]
+  activeId: string
+  /** 排在「更多」后面、没摆上工具带的方案数量。 */
+  hiddenCount: number
+  onSelect: (id: string) => void
+  onOpen: () => void
+}) {
+  const active = schemes.find((scheme) => scheme.id === activeId)
+  return (
+    <RibbonGroup label="高亮配色" note={active ? active.name : undefined}>
+      <div className="rgroup-row scheme-ribbon">
+        {schemes.map((scheme) => {
+          const on = scheme.id === activeId
+          return (
+            <button
+              key={scheme.id}
+              type="button"
+              className={`scheme-chip${on ? ' on' : ''}`}
+              aria-pressed={on}
+              title={`${scheme.name}${scheme.builtIn ? '（内置）' : '（自定义）'}——点击切换编辑器配色`}
+              onClick={() => onSelect(scheme.id)}
+            >
+              <span className="scheme-chip-name">{scheme.name}</span>
+              <span className="scheme-chip-strip" aria-hidden="true">
+                {(['heading', 'emphasis', 'code', 'listMarker', 'activeBlockBar'] as EditorTokenName[]).map((name) => (
+                  <i key={name} style={{ background: scheme.tokens[name] }} />
+                ))}
+              </span>
+            </button>
+          )
+        })}
+        <button
+          type="button"
+          className="scheme-more"
+          title={`全部配色方案、逐色槽细调、导入导出${hiddenCount > 0 ? `（还有 ${hiddenCount} 套没摆出来）` : ''}`}
+          onClick={onOpen}
+        >
+          <IconPalette />
+          更多{hiddenCount > 0 ? ` +${hiddenCount}` : ''}
+        </button>
       </div>
     </RibbonGroup>
   )

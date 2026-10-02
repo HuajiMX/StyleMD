@@ -17,6 +17,22 @@
   --danger: #b93220;
   --mono: ui-monospace, SFMono-Regular, Consolas, "Cascadia Mono", monospace;
   --sans: system-ui, -apple-system, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+  /* 编辑器配色的兜底值（等于内置「纸感」方案）：运行期由配色方案覆盖，
+     万一方案库加载失败，编辑区也不会变成没上色或一片漆黑。 */
+  --ed-bg: #ffffff;
+  --ed-fg: #17202e;
+  --ed-color-scheme: light;
+  --ed-active-line: #f2f6ff;
+  --ed-active-bar: #2f6fed;
+  --syn-heading: #1d4ed8;
+  --syn-em: #7a3ea8;
+  --syn-code: #0f766e;
+  --syn-code-bg: #f1f5f9;
+  --syn-link: #0b6bcb;
+  --syn-list: #b45309;
+  --syn-mark: #7590c9;
+  --syn-meta: #7b879b;
+  --syn-sep: #8595af;
   color-scheme: light;
 }
 
@@ -406,12 +422,105 @@ input[type="color"] {
 body.is-dragging-pane { cursor: col-resize; }
 body.is-dragging-pane .preview-iframe { pointer-events: none; }
 
+/* 源码编辑区：CodeMirror 6 承载，颜色全部走上面的变量（由配色方案注入）。 */
 .source-input {
-  flex: 1 1 auto; min-height: 0; resize: none; border: 0; outline: none;
-  padding: 12px 14px; font-family: var(--mono); font-size: 12.5px; line-height: 1.75;
-  color: var(--ink); background: var(--panel);
+  flex: 1 1 auto; min-height: 0;
+  display: flex; flex-direction: column;
 }
 
+/*
+ * 编辑器里凡是会跟 CodeMirror 自带基础主题撞车的样式（底色、前景色、行号槽、当前行、
+ * 光标与选区）都写在 createEditor.ts 的主题扩展里；这里只放它不涉及的部分。
+ */
+.cm-editor { flex: 1 1 auto; min-height: 0; }
+
+/* 结构竖线所在的窄槽：行号右边那一条。 */
+.cm-role-gutter .cm-gutterElement { position: relative; width: 7px; }
+/* 逐行画一段竖线：首尾行才带圆角，中间行方头，这样跨行时能连成一整条。 */
+.cm-role-gutter .cm-gutterElement.cm-role-bar::after {
+  content: ''; position: absolute; left: 3px; top: 0; bottom: 0; width: 3px;
+  background: var(--ed-active-bar);
+}
+.cm-role-gutter .cm-gutterElement.cm-role-start::after { border-radius: 2px 2px 0 0; }
+.cm-role-gutter .cm-gutterElement.cm-role-end::after { border-radius: 0 0 2px 2px; }
+
+/* 语法上色：类名由 lib/editor/syntaxHighlight.ts 按语法树节点打。 */
+.cm-md-heading { color: var(--syn-heading); font-weight: 700; }
+.cm-md-mark { color: var(--syn-mark); }
+.cm-md-em { color: var(--syn-em); }
+.cm-md-code { color: var(--syn-code); background: var(--syn-code-bg); }
+.cm-md-code-block { background: var(--syn-code-bg); }
+.cm-md-link { color: var(--syn-link); text-decoration: underline; }
+.cm-md-list { color: var(--syn-list); font-weight: 600; }
+.cm-md-meta { color: var(--syn-meta); }
+.cm-md-sep { color: var(--syn-sep); }
+
+/* 「高亮配色」栏：一整块白底卡片占满工具带高度，方案之间用竖线分隔，点一下就切。 */
+.scheme-ribbon {
+  flex: 1 1 auto; align-items: stretch; gap: 0;
+  border: 1px solid var(--line); border-radius: 8px;
+  background: var(--panel); overflow: hidden;
+}
+.scheme-chip {
+  display: flex; flex: 0 0 auto; flex-direction: column; align-items: center; justify-content: center; gap: 7px;
+  padding: 0 16px;
+  border: 0; border-right: 1px solid var(--line); border-radius: 0;
+  background: transparent; cursor: pointer;
+}
+.scheme-chip:hover { background: var(--panel-alt); }
+.scheme-chip.on { background: var(--accent-soft); }
+.scheme-chip-name { font-size: 12px; line-height: 1; color: var(--ink-2); white-space: nowrap; }
+.scheme-chip.on .scheme-chip-name { color: var(--accent); font-weight: 600; }
+.scheme-chip-strip { display: flex; gap: 3px; }
+.scheme-chip-strip i {
+  width: 16px; height: 16px; border-radius: 3px;
+  border: 1px solid rgba(15, 23, 42, 0.12);
+}
+.scheme-more {
+  display: flex; flex: 0 0 auto; align-items: center; gap: 5px;
+  padding: 0 16px;
+  border: 0; border-radius: 0;
+  background: transparent; color: var(--muted); font-size: 11.5px; cursor: pointer;
+  white-space: nowrap;
+}
+.scheme-more:hover { background: var(--panel-alt); color: var(--accent); }
+
+/* ---------- 编辑器配色面板 ---------- */
+.scheme-dialog {
+  /* 位置与大小由 useDialogFrame 给（跟样式窗口同一套）；这里只管两栏内容的下限。 */
+  min-width: 720px; min-height: 420px;
+}
+.dialog-sub { font-size: 12px; color: var(--muted); }
+.scheme-presets {
+  display: flex; flex-wrap: wrap; gap: 8px;
+  padding: 10px 14px; border-bottom: 1px solid var(--line); background: var(--panel-alt);
+}
+.scheme-card {
+  flex: 0 0 auto; min-width: 118px; padding: 7px 10px;
+  border: 1px solid var(--line); border-radius: 8px; background: var(--panel);
+  text-align: left; cursor: pointer;
+}
+.scheme-card:hover { border-color: var(--line-strong); }
+.scheme-card.on { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-soft); }
+.scheme-card-name { display: block; font-size: 12px; font-weight: 600; margin-bottom: 6px; }
+.scheme-card-name small { font-weight: 400; color: var(--muted); margin-left: 5px; }
+.scheme-strip { display: flex; gap: 3px; }
+.scheme-strip i { width: 14px; height: 14px; border-radius: 3px; border: 1px solid rgba(15, 23, 42, 0.12); }
+.scheme-body { flex: 1 1 auto; min-height: 0; display: flex; }
+.scheme-preview { flex: 1 1 auto; min-width: 0; display: flex; flex-direction: column; border-right: 1px solid var(--line); }
+.scheme-preview-label { padding: 6px 12px; font-size: 11px; color: var(--muted); border-bottom: 1px solid var(--line); }
+.scheme-preview-host { flex: 1 1 auto; min-height: 0; display: flex; flex-direction: column; }
+.scheme-tokens { flex: 0 0 380px; min-height: 0; overflow: auto; padding: 8px 0; }
+.scheme-name-row { display: flex; align-items: center; gap: 8px; padding: 4px 14px 10px; }
+.scheme-name-row input { flex: 0 1 200px; }
+.scheme-hint { font-size: 11px; color: var(--muted); }
+.scheme-token-row { display: flex; align-items: center; gap: 8px; padding: 4px 14px; }
+.scheme-token-name { flex: 1 1 auto; min-width: 0; font-size: 12px; color: var(--ink-2); }
+.scheme-token-row input[type="color"] { flex: 0 0 auto; width: 30px; height: 22px; padding: 0; border: 1px solid var(--line-strong); border-radius: 4px; background: none; }
+.scheme-token-hex { flex: 0 0 84px; font-family: var(--mono); font-size: 11.5px; }
+.badge { flex: 0 0 auto; font-size: 11px; padding: 1px 7px; border-radius: 999px; white-space: nowrap; }
+.badge.ok { background: #eef7f1; color: var(--ok); }
+.badge.warn { background: #fdf8ea; color: var(--warn); }
 .preview-frame { flex: 1 1 auto; min-height: 0; overflow: auto; background: #e6e9ee; }
 .preview-iframe { width: 100%; height: 100%; border: 0; display: block; }
 
@@ -527,6 +636,17 @@ body.is-dragging-pane .preview-iframe { pointer-events: none; }
   border: 1px solid var(--accent); background: var(--accent); color: #fff;
   font: inherit; font-weight: 600; cursor: pointer;
 }
+/* 次级按钮：弹窗里主操作之外的那些（导出 / 导入 / 重置…），跟主按钮同一套圆角与内边距。 */
+.dialog-foot button.secondary {
+  padding: 5px 14px; border-radius: 7px;
+  border: 1px solid var(--line-strong); background: var(--panel); color: var(--ink-2);
+  font: inherit; font-size: 12px; cursor: pointer;
+}
+.dialog-foot button.secondary:hover { background: #e6eaf1; }
+.dialog-foot button.secondary.danger { color: var(--danger); border-color: #eec3bb; }
+.dialog-foot button.secondary.danger:hover { background: #fdf1ef; }
+.dialog-foot button:disabled { opacity: 0.45; cursor: default; }
+.dialog-foot button:disabled:hover { background: var(--panel); }
 
 .statusbar {
   display: flex; gap: 10px; align-items: center;

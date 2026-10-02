@@ -34,6 +34,7 @@ export default defineConfig({
       { find: '@stylemd/presets', replacement: resolvePath('../../packages/presets/src/index.ts') },
       { find: '@stylemd/renderer-paged', replacement: resolvePath('../../packages/renderer-paged/src/index.ts') },
       { find: '@stylemd/core', replacement: resolvePath('../../packages/core/src/index.ts') },
+      { find: '@stylemd/editor-theme', replacement: resolvePath('../../packages/editor-theme/src/index.ts') },
     ],
   },
   // Vite 8 的依赖预打包会把 `@pagedjs-polyfill?raw` 当成普通包处理：dev 下导出的

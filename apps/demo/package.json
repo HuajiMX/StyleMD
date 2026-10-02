@@ -9,7 +9,14 @@
     "preview": "vite preview --port 4173 --strictPort"
   },
   "dependencies": {
+    "@codemirror/commands": "^6.11.1",
+    "@codemirror/lang-markdown": "^6.5.2",
+    "@codemirror/language": "^6.12.4",
+    "@codemirror/state": "^6.7.6",
+    "@codemirror/view": "^6.43.13",
+    "@lezer/highlight": "^1.2.5",
     "@stylemd/core": "*",
+    "@stylemd/editor-theme": "*",
     "@stylemd/presets": "*",
     "@stylemd/renderer-paged": "*",
     "@stylemd/theme-schema": "*",

@@ -14,6 +14,7 @@ import pagedPolyfill from '@pagedjs-polyfill?raw'
 import sampleMarkdown from '../../../examples/sample-thesis.md?raw'
 import { OutlinePanel } from './components/OutlinePanel'
 import { PreviewPane } from './components/PreviewPane'
+import { EditorSchemeDialog } from './components/EditorSchemeDialog'
 import { Ribbon, type RibbonTab } from './components/Ribbon'
 import { SourcePane } from './components/SourcePane'
 import { StatusBar, type ViewMode } from './components/StatusBar'
@@ -22,7 +23,9 @@ import { blankDocument, documentTitle, downloadText, markdownFileName, withDocum
 import { startWidthDrag } from './lib/dragResize'
 import { documentOutline, type OutlineItem } from './lib/outline'
 import { formatSavedAt, loadSession, saveSession } from './lib/session'
-import { offsetToScrollTop, scrollTopsForOffsets } from './lib/textareaScroll'
+import type { SourceEditorHandle } from './lib/editor/types'
+import { activeScheme, applyScheme, loadSchemeLibrary, saveSchemeLibrary } from './lib/editor/scheme'
+import { SCHEME_RIBBON_LIMIT, markSchemeUsed, orderSchemesByRecent, type EditorSchemeLibrary } from '@stylemd/editor-theme'
 import { clearRoleGroup, resetRoleStyle, updateDefaults, updatePage, upsertRoleStyle } from './lib/themeOps'
 import { useDebounced } from './lib/useDebounced'
 
@@ -59,6 +62,16 @@ export function App() {
   }, [applyTheme])
 
   const [dialogRole, setDialogRole] = useState<string | null>(null)
+  const [schemeDialogOpen, setSchemeDialogOpen] = useState(false)
+  const [schemeLibrary, setSchemeLibrary] = useState<EditorSchemeLibrary>(() => loadSchemeLibrary())
+  const currentScheme = useMemo(() => activeScheme(schemeLibrary), [schemeLibrary])
+  // 工具带固定只摆 SCHEME_RIBBON_LIMIT 个，按最近使用排序，其余走「更多」。
+  const ribbonSchemes = useMemo(
+    () => orderSchemesByRecent(schemeLibrary).slice(0, SCHEME_RIBBON_LIMIT),
+    [schemeLibrary],
+  )
+  useEffect(() => applyScheme(currentScheme.tokens), [currentScheme])
+  useEffect(() => saveSchemeLibrary(schemeLibrary), [schemeLibrary])
   const [ribbonTab, setRibbonTab] = useState<RibbonTab>('start')
   const [cursorOffset, setCursorOffset] = useState(() => Math.max(0, session?.cursorOffset ?? 0))
   const [zoom, setZoom] = useState(() => session?.zoom ?? 0.85)
@@ -76,20 +89,18 @@ export function App() {
   const [editorWidth, setEditorWidth] = useState(() => session?.editorWidth ?? 420)
   const [savedAt, setSavedAt] = useState<number | null>(null)
   const iframeRef = useRef<HTMLIFrameElement>(null)
-  const sourceRef = useRef<HTMLTextAreaElement>(null)
+  const editorRef = useRef<SourceEditorHandle | null>(null)
   const scrollRatioRef = useRef(0)
   const outlineTimerRef = useRef<number | null>(null)
   /** 正在把预览的滚动同步回编辑器；这期间的编辑器 scroll 事件不再回发给预览，免得两边互相推。 */
   const syncingFromPreviewRef = useRef(false)
 
   const applyPreviewScroll = useCallback((ratio: number) => {
-    const textarea = sourceRef.current
-    if (!textarea) return
-    const max = textarea.scrollHeight - textarea.clientHeight
-    if (max <= 0) return
+    const editor = editorRef.current
+    if (!editor) return
     const clamped = Math.min(Math.max(0, ratio), 1)
     syncingFromPreviewRef.current = true
-    textarea.scrollTop = clamped * max
+    editor.setScrollRatio(clamped)
     scrollRatioRef.current = clamped
     window.requestAnimationFrame(() =>
       window.requestAnimationFrame(() => {
@@ -100,16 +111,13 @@ export function App() {
 
   // 恢复上次的光标：把插入点放回去，并把编辑器滚到那一行（预览等分页完成后跟上）。
   useEffect(() => {
-    const textarea = sourceRef.current
-    if (!session || !textarea) return
-    const offset = Math.min(Math.max(0, session.cursorOffset), textarea.value.length)
+    if (!session) return
     const frame = window.requestAnimationFrame(() => {
-      textarea.setSelectionRange(offset, offset)
-      textarea.scrollTop = offsetToScrollTop(textarea, offset)
-      scrollRatioRef.current =
-        textarea.scrollHeight > textarea.clientHeight
-          ? textarea.scrollTop / (textarea.scrollHeight - textarea.clientHeight)
-          : 0
+      const editor = editorRef.current
+      if (!editor) return
+      const offset = Math.min(Math.max(0, session.cursorOffset), editor.getValue().length)
+      editor.revealOffset(offset)
+      scrollRatioRef.current = editor.getScrollRatio()
     })
     return () => window.cancelAnimationFrame(frame)
     // 只在首次挂载时恢复一次。
@@ -221,16 +229,13 @@ export function App() {
    * 就是当前所处的章节——比按比例估算准，软换行也不会带偏。
    */
   const updateActiveOutline = useCallback(() => {
-    const textarea = sourceRef.current
-    if (!textarea || outline.length === 0) {
+    const editor = editorRef.current
+    if (!editor || outline.length === 0) {
       setActiveOutlineOffset(null)
       return
     }
-    const tops = scrollTopsForOffsets(
-      textarea,
-      outline.map((item) => item.offset),
-    )
-    const current = textarea.scrollTop
+    const tops = editor.offsetTopsFor(outline.map((item) => item.offset))
+    const current = editor.scrollTop()
     let index = 0
     for (let position = 0; position < tops.length; position += 1) {
       if ((tops[position] ?? 0) <= current + 6) index = position
@@ -292,12 +297,11 @@ export function App() {
   }, [markdown, cursorOffset, theme, viewMode, navOpen, navWidth, editorWidth, zoom])
 
   const jumpToOutline = useCallback((item: OutlineItem) => {
-    const textarea = sourceRef.current
-    if (!textarea) return
-    textarea.focus()
-    textarea.setSelectionRange(item.offset, item.offset)
-    // 把目标标题顶到首行；已经到文末时浏览器会自己夹住，不会多跳。
-    textarea.scrollTop = offsetToScrollTop(textarea, item.offset)
+    const editor = editorRef.current
+    if (!editor) return
+    editor.focus()
+    // 把目标标题顶到首行；已经到文末时编辑器会自己夹住，不会多跳。
+    editor.revealOffset(item.offset)
     setCursorOffset(item.offset)
   }, [])
 
@@ -355,6 +359,11 @@ export function App() {
         onSaveDocument={handleSaveDocument}
         onSaveDocumentAs={handleSaveDocumentAs}
         onRenameDocument={handleRenameDocument}
+        schemes={ribbonSchemes}
+        activeSchemeId={currentScheme.id}
+        hiddenSchemeCount={Math.max(0, schemeLibrary.schemes.length - ribbonSchemes.length)}
+        onSelectScheme={(id) => setSchemeLibrary((library) => markSchemeUsed(library, id))}
+        onOpenSchemeDialog={() => setSchemeDialogOpen(true)}
       />
 
       {validation.errors.length > 0 ? (
@@ -383,10 +392,12 @@ export function App() {
         {viewMode !== 'preview' ? (
           <SourcePane
             value={markdown}
-            textareaRef={sourceRef}
+            editorRef={editorRef}
             onChange={setMarkdown}
             onCursorChange={setCursorOffset}
             onScrollRatio={handleSourceScroll}
+            roleSpans={roleSpans}
+            cursorOffset={cursorOffset}
             style={viewMode === 'both' ? { flex: `0 0 ${editorWidth}px` } : undefined}
           />
         ) : null}
@@ -435,6 +446,14 @@ export function App() {
           onClearGroup={handleClearGroup}
           onResetRole={handleResetRole}
           onClose={() => setDialogRole(null)}
+        />
+      ) : null}
+
+      {schemeDialogOpen ? (
+        <EditorSchemeDialog
+          library={schemeLibrary}
+          onChange={setSchemeLibrary}
+          onClose={() => setSchemeDialogOpen(false)}
         />
       ) : null}
     </div>

@@ -1,10 +1,11 @@
 import type { ComputedStyles, RoleStyle, StyleTheme } from '@stylemd/theme-schema'
+import type { EditorScheme } from '@stylemd/editor-theme'
 import { StyleGallery } from './StyleGallery'
-import { StyleBrowser } from './StyleBrowser'
 import { FileMenu } from './FileMenu'
 import {
   DefaultsGroup,
   EditGroup,
+  EditorSchemeGroup,
   FontQuickGroup,
   PageGroup,
   ParagraphQuickGroup,
@@ -13,11 +14,11 @@ import {
   type StyleEditContext,
 } from './ribbon-groups'
 
-export type RibbonTab = 'start' | 'styles' | 'page'
+export type RibbonTab = 'start' | 'edit' | 'page'
 
 const TABS: { id: RibbonTab; label: string }[] = [
   { id: 'start', label: '开始' },
-  { id: 'styles', label: '样式' },
+  { id: 'edit', label: '编辑' },
   { id: 'page', label: '页面' },
 ]
 
@@ -51,6 +52,11 @@ interface RibbonProps {
   onSaveDocument: () => void
   onSaveDocumentAs: (name: string) => void
   onRenameDocument: (name: string) => void
+  schemes: EditorScheme[]
+  activeSchemeId: string
+  hiddenSchemeCount: number
+  onSelectScheme: (id: string) => void
+  onOpenSchemeDialog: () => void
 }
 
 /**
@@ -150,30 +156,17 @@ export function Ribbon(props: RibbonProps) {
                 onPick={props.onOpenDialog}
               />
             </RibbonGroup>
-            <EditGroup
-              autoDetect={props.autoDetect}
-              onAutoDetectChange={props.onAutoDetectChange}
-              canUndo={props.canUndo}
-              onUndo={props.onUndo}
-            />
           </>
         ) : null}
 
-        {props.tab === 'styles' ? (
+        {props.tab === 'edit' ? (
           <>
-            <RibbonGroup label="样式" grow note="按类别浏览">
-              <StyleBrowser
-                theme={theme}
-                computed={computed}
-                activeRole={activeRole}
-                onPick={props.onOpenDialog}
-              />
-            </RibbonGroup>
-            <StylePackGroup
-              theme={theme}
-              onPresetChange={props.onPresetChange}
-              onImport={props.onImport}
-              onExport={props.onExport}
+            <EditorSchemeGroup
+              schemes={props.schemes}
+              activeId={props.activeSchemeId}
+              hiddenCount={props.hiddenSchemeCount}
+              onSelect={props.onSelectScheme}
+              onOpen={props.onOpenSchemeDialog}
             />
             <EditGroup
               autoDetect={props.autoDetect}

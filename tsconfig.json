@@ -19,7 +19,8 @@
     "paths": {
       "@stylemd/theme-schema": ["./packages/theme-schema/src/index.ts"],
       "@stylemd/presets": ["./packages/presets/src/index.ts"],
-      "@stylemd/core": ["./packages/core/src/index.ts"]
+      "@stylemd/core": ["./packages/core/src/index.ts"],
+      "@stylemd/editor-theme": ["./packages/editor-theme/src/index.ts"]
     }
   },
   "include": [

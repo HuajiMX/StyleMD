@@ -4,7 +4,6 @@ import {
   useLayoutEffect,
   useRef,
   useState,
-  type PointerEvent as ReactPointerEvent,
   type ReactNode,
 } from 'react'
 import {
@@ -17,6 +16,7 @@ import {
 } from '@stylemd/theme-schema'
 import { computedToInlineStyle } from '../lib/inlineStyle'
 import { explicitStyle, resolvedStyle } from '../lib/roleStyle'
+import { clamp, useDialogFrame } from '../lib/dialogFrame'
 import { FONT_FAMILIES, FONT_WEIGHTS } from '../lib/typePresets'
 import { AlignSegmented } from './align-control'
 import { Field, FontSizeCombo, IconToggle, NumberInput, Row, Section, SelectInput, ToggleChip } from './fields'
@@ -46,36 +46,11 @@ const SIDES = [
   { key: 'left' as const, label: '左' },
 ]
 
-interface Frame {
-  x: number
-  y: number
-  width: number
-  height: number
-}
-
 const MIN_WIDTH = 620
 /** 预览区和页脚是固定高度的，窗口再小也要给表单留出空间。 */
 const MIN_HEIGHT = 380
 /** 首次打开时的最小高度，比手动缩放的下限宽裕一点，免得一进来就要往下滚。 */
 const FIT_MIN_HEIGHT = 420
-
-function clamp(value: number, min: number, max: number): number {
-  return Math.min(Math.max(value, min), max)
-}
-
-function defaultFrame(): Frame {
-  const width = clamp(window.innerWidth - 200, MIN_WIDTH, 1000)
-  const height = clamp(window.innerHeight - 180, MIN_HEIGHT, 720)
-  return {
-    x: Math.round((window.innerWidth - width) / 2),
-    y: Math.round(Math.max(16, (window.innerHeight - height) / 2 - 40)),
-    width,
-    height,
-  }
-}
-
-/** 同一个会话里再次打开时沿用上次的位置和大小。 */
-let rememberedFrame: Frame | null = null
 
 interface StyleDialogProps {
   theme: StyleTheme
@@ -100,13 +75,26 @@ interface StyleDialogProps {
 export function StyleDialog(props: StyleDialogProps) {
   const { theme, computed, role } = props
   const [tab, setTab] = useState<DialogTab>('font')
-  const [frame, setFrame] = useState<Frame>(() => rememberedFrame ?? defaultFrame())
-  /** 用户是否自己动过窗口；动过之后就不再自动贴合内容高度。 */
-  const adjustedRef = useRef(false)
   const dialogRef = useRef<HTMLDivElement>(null)
   const bodyRef = useRef<HTMLDivElement>(null)
-  const frameRef = useRef(frame)
-  frameRef.current = frame
+  // 拖动、缩放、会话内记住位置：与编辑器配色窗口共用同一套实现。
+  const {
+    frame,
+    setFrame,
+    adjusted: adjustedRef,
+    restored,
+    beginDrag,
+    beginResize,
+    frameStyle,
+  } = useDialogFrame({
+    key: 'style-dialog',
+    measure: () => ({
+      width: clamp(window.innerWidth - 200, MIN_WIDTH, 1000),
+      height: clamp(window.innerHeight - 180, MIN_HEIGHT, 720),
+    }),
+    minWidth: MIN_WIDTH,
+    minHeight: MIN_HEIGHT,
+  })
 
   const resolved = resolvedStyle(computed, role)
   const explicit = explicitStyle(theme, role)
@@ -125,15 +113,9 @@ export function StyleDialog(props: StyleDialogProps) {
     return () => window.removeEventListener('keydown', onKeyDown)
   }, [])
 
-  // 只记住用户调过的尺寸：自动贴合出来的高度不该被当成用户的选择。
-  // （也不能写成「卸载时保存」——StrictMode 下挂载会立刻清理一次，那样第一次就被记下了。）
-  useEffect(() => {
-    if (adjustedRef.current) rememberedFrame = frameRef.current
-  }, [frame])
-
   // 高度贴着内容走：开窗时和每次切选项卡都重新量一次，用户一旦手动拖过就不再插手。
   useLayoutEffect(() => {
-    if (adjustedRef.current || rememberedFrame) return
+    if (adjustedRef.current || restored) return
     const dialog = dialogRef.current
     const body = bodyRef.current
     if (!dialog || !body) return
@@ -151,59 +133,6 @@ export function StyleDialog(props: StyleDialogProps) {
 
   // 切角色时回到第一个选项卡，免得停在上一次角色的「编号」页上找不着北。
   useEffect(() => setTab('font'), [role])
-
-  /** 拖动与缩放共用一套指针跟踪；拖拽期间禁掉文本选择。 */
-  const startPointerJob = useCallback(
-    (event: ReactPointerEvent<HTMLElement>, apply: (move: { dx: number; dy: number }) => void) => {
-      if (event.button !== 0) return
-      if (
-        event.currentTarget.classList.contains('dialog-head') &&
-        (event.target as HTMLElement).closest('button, input, select, textarea, a, [role="tab"]')
-      ) {
-        return
-      }
-      event.preventDefault()
-      const startX = event.clientX
-      const startY = event.clientY
-      const previousUserSelect = document.body.style.userSelect
-      document.body.style.userSelect = 'none'
-      const onMove = (moveEvent: PointerEvent) =>
-        apply({ dx: moveEvent.clientX - startX, dy: moveEvent.clientY - startY })
-      const onUp = () => {
-        document.body.style.userSelect = previousUserSelect
-        window.removeEventListener('pointermove', onMove)
-        window.removeEventListener('pointerup', onUp)
-      }
-      window.addEventListener('pointermove', onMove)
-      window.addEventListener('pointerup', onUp)
-    },
-    [],
-  )
-
-  const beginDrag = (event: ReactPointerEvent<HTMLElement>) => {
-    adjustedRef.current = true
-    const origin = { ...frameRef.current }
-    startPointerJob(event, ({ dx, dy }) => {
-      setFrame({
-        ...origin,
-        x: clamp(origin.x + dx, 80 - origin.width, window.innerWidth - 80),
-        y: clamp(origin.y + dy, 0, window.innerHeight - 40),
-      })
-    })
-  }
-
-  const beginResize = (event: ReactPointerEvent<HTMLElement>) => {
-    event.stopPropagation()
-    adjustedRef.current = true
-    const origin = { ...frameRef.current }
-    startPointerJob(event, ({ dx, dy }) => {
-      setFrame({
-        ...origin,
-        width: clamp(origin.width + dx, MIN_WIDTH, window.innerWidth - 16),
-        height: clamp(origin.height + dy, MIN_HEIGHT, window.innerHeight - 16),
-      })
-    })
-  }
 
   if (!resolved) {
     return (
@@ -664,7 +593,7 @@ export function StyleDialog(props: StyleDialogProps) {
         aria-label={`${roleLabel(role)} 样式配置`}
         tabIndex={-1}
         ref={dialogRef}
-        style={{ left: frame.x, top: frame.y, width: frame.width, height: frame.height }}
+        style={frameStyle}
         onMouseDown={(event) => event.stopPropagation()}
       >
         <header className="dialog-head" onPointerDown={beginDrag} title="按住拖动窗口">

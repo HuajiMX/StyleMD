@@ -142,6 +142,16 @@ export function IconExport() {
   )
 }
 
+/** 高亮配色：调色板轮廓里三个色块。 */
+export function IconPalette() {
+  return (
+    <svg {...BASE}>
+      <path d="M8 2.2c3.2 0 5.8 2.3 5.8 5.2 0 1.7-1.4 2.6-2.7 2.6h-1c-.8 0-1.4.6-1.4 1.3 0 .5.2.8.2 1.3 0 .7-.5 1.2-1.3 1.2-3 0-5.4-2.5-5.4-5.8S4.8 2.2 8 2.2z" />
+      <path d="M5.8 6.2h.02M8.4 4.9h.02M10.7 6.6h.02" />
+    </svg>
+  )
+}
+
 /** 行距：三条线 + 右侧双向箭头。 */
 export function IconLineSpacing() {
   return (

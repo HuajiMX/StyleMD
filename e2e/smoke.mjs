@@ -94,18 +94,54 @@ async function until(fn, { timeout = 20000, interval = 200, label = '条件满�
 const readFontSizePt = (locator) =>
   locator.evaluate((element) => (Number.parseFloat(getComputedStyle(element).fontSize) * 72) / 96)
 
+/**
+ * 编辑器辅助：源码区是 CodeMirror 6，没有 textarea 的 value / selectionStart / scrollTop，
+ * 一律通过 ?e2e=1 挂上的调试句柄读写，避免断言绑死在编辑器的内部 DOM 上。
+ */
+const editorValue = (page) => page.evaluate(() => window.__stylemdEditor.getValue())
+const editorCaret = (page) => page.evaluate(() => window.__stylemdEditor.getCursor())
+const setCaret = (page, offset) => page.evaluate((value) => window.__stylemdEditor.setCursor(value), offset)
+const setScrollTop = (page, top) => page.evaluate((value) => window.__stylemdEditor.setScrollTop(value), top)
+const editorScrollTop = (page) => page.evaluate(() => Math.round(window.__stylemdEditor.getScrollTop()))
+const readEditor = (page) =>
+  page.evaluate(() => {
+    const scroller = document.querySelector('.source-input .cm-scroller')
+    return {
+      scrollTop: Math.round(scroller.scrollTop),
+      maxScroll: Math.round(scroller.scrollHeight - scroller.clientHeight),
+      caret: window.__stylemdEditor.getCursor(),
+    }
+  })
+
+/** 找第一处以 prefix 开头的行，返回行首偏移；找不到返回 -1。 */
+async function lineStartOffset(page, prefix) {
+  const value = await editorValue(page)
+  let offset = 0
+  for (const line of value.split('\n')) {
+    if (line.startsWith(prefix)) return offset
+    offset += line.length + 1
+  }
+  return -1
+}
+
+/** 同上，但从文末往前找。 */
+async function lastLineStartOffset(page, prefix) {
+  const value = await editorValue(page)
+  const lines = value.split('\n')
+  let offset = value.length
+  for (let index = lines.length - 1; index >= 0; index -= 1) {
+    offset -= lines[index].length
+    if (lines[index].startsWith(prefix)) return offset
+    offset -= 1
+  }
+  return -1
+}
+
 /** 把光标放到文中第一处 `# ` 标题的文字里，用来验证功能区会跟随光标定位。 */
 async function putCaretInFirstHeading(page) {
-  const lineIndex = await page
-    .locator('.source-input')
-    .evaluate((element) => element.value.split('\n').findIndex((line) => line.startsWith('# ')))
-  if (lineIndex < 0) throw new Error('示例文档里没有一级标题')
-  // 用 focus 而不是 click：click 会把光标落在点到的位置，先经过别的结构再回到文首，
-  // 断言时要多等一轮状态同步，没必要。
-  await page.locator('.source-input').focus()
-  await page.keyboard.press('Control+Home')
-  for (let index = 0; index < lineIndex; index += 1) await page.keyboard.press('ArrowDown')
-  for (let index = 0; index < 3; index += 1) await page.keyboard.press('ArrowRight')
+  const offset = await lineStartOffset(page, '# ')
+  if (offset < 0) throw new Error('示例文档里没有一级标题')
+  await setCaret(page, offset + 3)
 }
 
 async function main() {
@@ -128,7 +164,8 @@ async function main() {
   page.on('pageerror', (error) => consoleErrors.push(String(error)))
 
   try {
-    await page.goto(`http://127.0.0.1:${port}/`, { waitUntil: 'load' })
+    // ?e2e=1 才会挂上编辑器调试句柄，正常使用时没有这个全局对象。
+    await page.goto(`http://127.0.0.1:${port}/?e2e=1`, { waitUntil: 'load' })
     const preview = page.frameLocator('iframe.preview-iframe')
 
     // 1. 底部栏提示（页数、字数、缩放都在全局底部栏上）；分页完成的信号以状态栏为准，
@@ -256,17 +293,9 @@ async function main() {
     check('首行缩进是开关图标按钮', true, `缩进 ${firstLineIndentRatio.toFixed(1)} 字符`)
 
     // 4e. 光标落到排在末尾的表格结构：画廊要自动滚过去，否则聚焦了也找不到
-    const tableLine = await page.locator('.source-input').evaluate((element) => {
-      const lines = element.value.split('\n')
-      for (let index = lines.length - 1; index >= 0; index -= 1) {
-        if (lines[index].startsWith('|')) return index + 1
-      }
-      return -1
-    })
-    await page.locator('.source-input').focus()
-    await page.keyboard.press('Control+Home')
-    for (let index = 0; index < tableLine; index += 1) await page.keyboard.press('ArrowDown')
-    await page.keyboard.press('ArrowRight')
+    const tableOffset = await lastLineStartOffset(page, '|')
+    if (tableOffset < 0) throw new Error('示例文档里没有表格')
+    await setCaret(page, tableOffset + 1)
     const galleryState = await until(
       async () => {
         const state = await page.evaluate(() => {
@@ -288,8 +317,7 @@ async function main() {
     check('样式聚焦时画廊自动滚动过去', galleryState.scrollLeft > 0, `滚动到 ${galleryState.scrollLeft}px，「表格」卡片可见`)
 
     // 4f. 光标离开所有结构（停在文件头）时，默认落到正文段落
-    await page.locator('.source-input').focus()
-    await page.keyboard.press('Control+Home')
+    await setCaret(page, 0)
     const fallbackCard = await until(
       async () => {
         const label = await page.locator('.style-card.active').first().getAttribute('aria-label')
@@ -301,23 +329,15 @@ async function main() {
 
     // 4g. 左侧大纲导航：点击把该标题顶到编辑器首行；到文末跳不动时就停在底部
     const navItems = await page.locator('.nav-item').count()
-    const readEditor = () =>
-      page.locator('.source-input').evaluate((element) => ({
-        scrollTop: Math.round(element.scrollTop),
-        maxScroll: Math.round(element.scrollHeight - element.clientHeight),
-        caret: element.selectionStart,
-      }))
     const jumpTo = async (index) => {
       await page.locator('.nav-item').nth(index).click()
       await page.waitForTimeout(120)
-      return readEditor()
+      return readEditor(page)
     }
 
     const secondItem = await jumpTo(1)
     const thirdItem = await jumpTo(2)
-    const expectedOffset = await page
-      .locator('.source-input')
-      .evaluate((element) => element.value.indexOf('## 研究背景'))
+    const expectedOffset = (await editorValue(page)).indexOf('## 研究背景')
     check(
       '大纲跳转把标题顶到编辑器首行',
       secondItem.scrollTop > 0 && secondItem.caret === expectedOffset && thirdItem.scrollTop > secondItem.scrollTop,
@@ -336,7 +356,7 @@ async function main() {
       const count = await page.locator('.nav-item.active').count()
       return count > 0 ? (await page.locator('.nav-item.active').first().innerText()).trim() : ''
     }
-    await page.locator('.source-input').evaluate((element) => { element.scrollTop = 0 })
+    await setScrollTop(page, 0)
     const topActive = await until(
       async () => {
         const active = await activeNavText()
@@ -345,7 +365,7 @@ async function main() {
       },
       { label: '滚到顶部高亮第一条' },
     )
-    await page.locator('.source-input').evaluate((element) => { element.scrollTop = element.scrollHeight })
+    await setScrollTop(page, 1e7)
     const bottomActive = await until(
       async () => {
         const active = await activeNavText()
@@ -376,7 +396,7 @@ async function main() {
     )
 
     // 4i. 双向滚动同步：编辑器 → 预览
-    await page.locator('.source-input').evaluate((element) => { element.scrollTop = element.scrollHeight })
+    await setScrollTop(page, 1e7)
     const previewScroll = await until(async () => {
       const top = await preview.locator('html').evaluate((element) => element.scrollTop || element.parentElement?.scrollTop || 0)
       return top > 0 ? top : 0
@@ -384,14 +404,14 @@ async function main() {
     check('编辑器滚动时预览跟随', true, `预览 scrollTop=${Math.round(previewScroll)}`)
 
     // 4i-2. 反向：在预览里滚鼠标滚轮，编辑器要跟着走
-    await page.locator('.source-input').evaluate((element) => { element.scrollTop = 0 })
+    await setScrollTop(page, 0)
     await page.waitForTimeout(400)
     const previewBox = await page.locator('.preview-pane').boundingBox()
     await page.mouse.move(previewBox.x + previewBox.width / 2, previewBox.y + previewBox.height / 2)
     await page.mouse.wheel(0, 600)
     const editorAfterWheel = await until(
       async () => {
-        const top = await page.locator('.source-input').evaluate((element) => Math.round(element.scrollTop))
+        const top = await editorScrollTop(page)
         return top > 0 ? top : 0
       },
       { label: '预览滚动时编辑器跟随', timeout: 10000 },
@@ -552,7 +572,7 @@ async function main() {
       const title = await page.locator('.doc-title').innerText()
       return title.trim() === '重命名后的文档' ? title.trim() : ''
     }, { label: '重命名生效' })
-    const frontmatterRenamed = await page.locator('.source-input').evaluate((element) => element.value.includes('title: 重命名后的文档'))
+    const frontmatterRenamed = (await editorValue(page)).includes('title: 重命名后的文档')
     check('文件菜单可以重命名文档', frontmatterRenamed, `标题栏：${renamed}`)
 
     await page.getByRole('button', { name: '文件' }).click()
@@ -566,7 +586,7 @@ async function main() {
     await page.waitForSelector('.file-panel', { timeout: 5000 })
     await page.getByRole('menuitem', { name: '新建' }).click()
     const blank = await until(async () => {
-      const value = await page.locator('.source-input').inputValue()
+      const value = await editorValue(page)
       return value.includes('title: 未命名文档') && value.includes('# 一级标题') ? value : ''
     }, { label: '新建文档' })
     check('文件菜单可以新建文档', blank.startsWith('---'), '生成带前置元数据的空白文档')
@@ -574,7 +594,7 @@ async function main() {
     await page.getByRole('button', { name: '文件' }).click()
     await page.waitForSelector('.file-panel', { timeout: 5000 })
     await page.getByRole('menuitem', { name: '载入示例文档' }).click()
-    await until(async () => (await page.locator('.source-input').inputValue()).includes('StyleMD 样式模型设计说明'), {
+    await until(async () => (await editorValue(page)).includes('StyleMD 样式模型设计说明'), {
       label: '恢复示例文档',
     })
 
@@ -582,18 +602,14 @@ async function main() {
     await page.locator('.nav-item').nth(1).click()
     await page.keyboard.press('End')
     await page.keyboard.type(' 会话标记')
-    const beforeReload = await page
-      .locator('.source-input')
-      .evaluate((element) => ({ value: element.value, caret: element.selectionStart }))
+    const beforeReload = { value: await editorValue(page), caret: await editorCaret(page) }
     await page.waitForTimeout(700)
     check('底部栏显示已保存时间', /已保存 \d{2}:\d{2}/.test(await page.locator('.statusbar').innerText()), '写入 localStorage')
 
     await page.reload({ waitUntil: 'load' })
     const restored = await until(
       async () => {
-        const state = await page
-          .locator('.source-input')
-          .evaluate((element) => ({ value: element.value, caret: element.selectionStart }))
+        const state = { value: await editorValue(page), caret: await editorCaret(page) }
         return state.value === beforeReload.value && state.caret === beforeReload.caret ? state : null
       },
       { label: '刷新后恢复文档与光标' },
@@ -605,7 +621,199 @@ async function main() {
     }, { label: '恢复后定位一致' })
     check('恢复后结构定位一致', true, restoredRole)
 
-    // 11. 控制台错误
+    // 12. 编辑器高亮与配色：功能区改版、语法上色、结构高亮、预设切换与持久化
+    await page.getByRole('tab', { name: '编辑', exact: true }).click()
+    const schemeEntry = await page.getByText('高亮配色').count()
+    const stylesTabGone = (await page.getByRole('tab', { name: '样式', exact: true }).count()) === 0
+    check(
+      '功能区去掉「样式」页并新增「编辑」页',
+      schemeEntry > 0 && stylesTabGone,
+      '「样式」与「开始」重复，已移除；高亮配色落在「编辑」页',
+    )
+
+    // 「高亮配色」栏里直接摊着方案，点一下就切，不用先开窗
+    const chipNames = await page.locator('.scheme-chip-name').allInnerTexts()
+    check(
+      '高亮配色栏固定展示 5 个方案',
+      chipNames.length === 5 && ['纸感', '鲜明', '黑白', '夜读', '高对比'].every((name) => chipNames.includes(name)),
+      chipNames.join(' / '),
+    )
+
+    // 点「夜读」：编辑区底色与原生 color-scheme 一起变
+    await page.getByRole('button', { name: '夜读', exact: true }).click()
+    const darkApplied = await until(
+      async () => {
+        const state = await page.evaluate(() => {
+          // 底色与 color-scheme 挂在编辑器本身（.cm-editor）上，不再挂在容器上——
+          // 面板里的实时预览是同一套样式，所以这两个值必须读编辑器元素。
+          const host = document.querySelector('.source-input .cm-editor')
+          const style = getComputedStyle(host)
+          return { bg: style.backgroundColor, scheme: style.colorScheme }
+        })
+        return state.scheme === 'dark' ? state : null
+      },
+      { label: '点工具带上的方案直接切换' },
+    )
+    check('点工具带上的配色方案即切换', /rgb\(19, 26, 38\)/.test(darkApplied.bg), `${darkApplied.bg} · color-scheme: ${darkApplied.scheme}`)
+
+    const reorderedFirst = await page.locator('.scheme-chip-name').first().innerText()
+    check('最近选用的方案自动排到最前', reorderedFirst.trim() === '夜读', `第一位：${reorderedFirst.trim()}`)
+
+    // 细调与导入导出仍走面板
+    await page.getByRole('button', { name: /更多/ }).click()
+    await page.waitForSelector('.scheme-dialog', { timeout: 5000 })
+    const presetNames = await page.locator('.scheme-card-name').allInnerTexts()
+    check(
+      '「更多」打开配色面板',
+      ['纸感', '鲜明', '黑白', '夜读', '高对比'].every((name) => presetNames.some((text) => text.includes(name))),
+      presetNames.map((text) => text.replace(/\s+/g, '')).join(' / '),
+    )
+
+    // 预览必须是「所见即所得」：底色、前景、行号槽都得跟真身一样
+    const previewSurface = await page.evaluate(() => {
+      const editor = document.querySelector('.scheme-preview-host .cm-editor')
+      if (!editor) return null
+      const style = getComputedStyle(editor)
+      return {
+        bg: style.backgroundColor,
+        scheme: style.colorScheme,
+        gutter: getComputedStyle(document.querySelector('.scheme-preview-host .cm-gutters')).backgroundColor,
+      }
+    })
+    check(
+      '实时预览里能看到编辑器底色',
+      previewSurface?.bg === 'rgb(19, 26, 38)' && previewSurface.scheme === 'dark',
+      `${previewSurface?.bg} · color-scheme: ${previewSurface?.scheme}`,
+    )
+
+    // 面板里点选：工具栏要跟着排，面板自己先不重排（用户正在这里调色，卡片跳位很难受）
+    const dialogOrderBefore = await page.locator('.scheme-card-name').allInnerTexts()
+    await page.getByRole('radio', { name: '高对比内置', exact: true }).click()
+    const dialogOrderAfter = await page.locator('.scheme-card-name').allInnerTexts()
+    check(
+      '面板内点选不重排（避免选项跳动）',
+      JSON.stringify(dialogOrderAfter) === JSON.stringify(dialogOrderBefore),
+      dialogOrderAfter.map((text) => text.replace(/\s+/g, '')).join(' / '),
+    )
+
+    await page.getByRole('button', { name: '关闭' }).click()
+    const ribbonAfterPanelPick = await page.locator('.scheme-chip-name').allInnerTexts()
+    check(
+      '面板里选的方案在工具栏排到最前',
+      ribbonAfterPanelPick[0]?.trim() === '高对比',
+      ribbonAfterPanelPick.join(' / '),
+    )
+
+    await page.getByRole('button', { name: /更多/ }).click()
+    const dialogOrderReopened = await page.locator('.scheme-card-name').allInnerTexts()
+    check(
+      '重新打开面板才按新顺序',
+      dialogOrderReopened[0]?.includes('高对比') === true,
+      dialogOrderReopened.map((text) => text.replace(/\s+/g, '')).join(' / '),
+    )
+
+    // 配色窗口与样式窗口共用同一套拖动 / 缩放：拖标题栏要走，拖右下角要变大
+    const schemeBefore = await page.locator('.scheme-dialog').boundingBox()
+    const schemeHead = await page.locator('.scheme-dialog .dialog-head').boundingBox()
+    await page.mouse.move(schemeHead.x + 60, schemeHead.y + schemeHead.height / 2)
+    await page.mouse.down()
+    await page.mouse.move(schemeHead.x + 60 - 70, schemeHead.y + schemeHead.height / 2 + 40, { steps: 6 })
+    await page.mouse.up()
+    const schemeDragged = await page.locator('.scheme-dialog').boundingBox()
+    check(
+      '配色窗口可以拖标题栏移动（与样式窗口同一套）',
+      Math.abs(schemeDragged.x - schemeBefore.x + 70) < 4 && Math.abs(schemeDragged.y - schemeBefore.y - 40) < 4,
+      `位移 ${Math.round(schemeDragged.x - schemeBefore.x)}, ${Math.round(schemeDragged.y - schemeBefore.y)}`,
+    )
+
+    const resize = await page.locator('.scheme-dialog .dialog-resize').boundingBox()
+    await page.mouse.move(resize.x + resize.width / 2, resize.y + resize.height / 2)
+    await page.mouse.down()
+    await page.mouse.move(resize.x + resize.width / 2 + 60, resize.y + resize.height / 2 + 50, { steps: 6 })
+    await page.mouse.up()
+    const schemeResized = await page.locator('.scheme-dialog').boundingBox()
+    check(
+      '配色窗口可以拖右下角缩放',
+      Math.abs(schemeResized.width - schemeBefore.width - 60) < 4 && Math.abs(schemeResized.height - schemeBefore.height - 50) < 4,
+      `${Math.round(schemeBefore.width)}×${Math.round(schemeBefore.height)} → ${Math.round(schemeResized.width)}×${Math.round(schemeResized.height)}`,
+    )
+
+    // 改内置方案里的一个色槽：应当自动落一份自定义副本，而不是改坏预设
+    await page.getByLabel('标题文字色值').fill('#ff8800')
+    const forked = await until(
+      async () => {
+        const names = await page.locator('.scheme-card-name').allInnerTexts()
+        return names.some((text) => text.includes('副本')) ? names.map((text) => text.replace(/\s+/g, '')).join(' / ') : ''
+      },
+      { label: '改内置配色自动存成副本' },
+    )
+    check('改内置方案的颜色会自动生成自定义副本', forked.includes('副本'), forked)
+
+    const headingVariable = await page.evaluate(() =>
+      getComputedStyle(document.documentElement).getPropertyValue('--syn-heading').trim(),
+    )
+    check('改色槽立刻写进 CSS 变量', headingVariable === '#ff8800', `--syn-heading = ${headingVariable}`)
+
+    await page.getByRole('button', { name: '关闭' }).click()
+    const ribbonAfterCustom = await page.locator('.scheme-chip-name').allInnerTexts()
+    const moreLabel = (await page.locator('.scheme-more').innerText()).trim()
+    check(
+      '自定义方案排到最前，工具带仍只展示 5 个',
+      ribbonAfterCustom.length === 5 &&
+        ribbonAfterCustom[0]?.includes('副本') &&
+        moreLabel.includes('+1'),
+      `${ribbonAfterCustom.join(' / ')}｜${moreLabel}`,
+    )
+    const headingColor = await until(
+      async () => {
+        const color = await page.evaluate(() => {
+          const node = document.querySelector('.cm-md-heading')
+          return node ? getComputedStyle(node).color : ''
+        })
+        return color ? color : ''
+      },
+      { label: '语法高亮生效' },
+    )
+    check('Markdown 语法按配色上色', headingColor === 'rgb(255, 136, 0)', `标题计算色 ${headingColor}`)
+
+    // 结构高亮：光标放进标题，源码里出现结构块装饰
+    await putCaretInFirstHeading(page)
+    const roleBlockCount = await until(
+      async () => {
+        const count = await page.locator('.cm-role-bar').count()
+        return count > 0 ? count : 0
+      },
+      { label: '结构高亮出现' },
+    )
+    check('光标所在结构在行号旁画出竖线', roleBlockCount > 0, `${roleBlockCount} 行带结构竖线`)
+
+    // 配色写在独立存档里：刷新后仍然生效
+    await page.reload({ waitUntil: 'load' })
+    const persistedHeading = await until(
+      async () => {
+        const value = await page.evaluate(() =>
+          getComputedStyle(document.documentElement).getPropertyValue('--syn-heading').trim(),
+        )
+        return value === '#ff8800' ? value : ''
+      },
+      { label: '配色写入独立存档' },
+    )
+    check('配色方案刷新后仍然生效', persistedHeading === '#ff8800', '--syn-heading 保持自定义值')
+
+    // 收尾：删掉测试造出来的副本并回到默认配色，免得影响下一次运行
+    await page.getByRole('tab', { name: '编辑', exact: true }).click()
+    await page.getByRole('button', { name: /更多/ }).click()
+    await page.waitForSelector('.scheme-dialog', { timeout: 5000 })
+    await page.getByRole('radio', { name: /副本/ }).click()
+    await page.getByRole('button', { name: '删除该方案' }).click()
+    await page.getByRole('radio', { name: '纸感内置', exact: true }).click()
+    await page.getByRole('button', { name: '关闭' }).click()
+    const backToDefault = await page.evaluate(() =>
+      getComputedStyle(document.documentElement).getPropertyValue('--syn-heading').trim(),
+    )
+    check('恢复默认配色后回到纸感', backToDefault === '#1d4ed8', `--syn-heading = ${backToDefault}`)
+
+    // 13. 控制台错误
     check('运行期无控制台错误', consoleErrors.length === 0, consoleErrors.slice(0, 2).join(' | '))
   } finally {
     await browser.close()
