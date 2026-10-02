@@ -331,6 +331,31 @@ async function main() {
       `停在 ${lastItem.scrollTop}px（上限 ${lastItem.maxScroll}px）`,
     )
 
+    // 4g-2. 滚动到哪一段，大纲就高亮哪一条
+    const activeNavText = async () => {
+      const count = await page.locator('.nav-item.active').count()
+      return count > 0 ? (await page.locator('.nav-item.active').first().innerText()).trim() : ''
+    }
+    await page.locator('.source-input').evaluate((element) => { element.scrollTop = 0 })
+    const topActive = await until(
+      async () => {
+        const active = await activeNavText()
+        const first = (await page.locator('.nav-item').first().innerText()).trim()
+        return active === first ? active : ''
+      },
+      { label: '滚到顶部高亮第一条' },
+    )
+    await page.locator('.source-input').evaluate((element) => { element.scrollTop = element.scrollHeight })
+    const bottomActive = await until(
+      async () => {
+        const active = await activeNavText()
+        const last = (await page.locator('.nav-item').last().innerText()).trim()
+        return active === last ? active : ''
+      },
+      { label: '滚到底部高亮最后一条' },
+    )
+    check('滚动时大纲自动高亮当前章节', true, `顶部 → ${topActive}，底部 → ${bottomActive}`)
+
     await page.getByRole('button', { name: '收起导航面板' }).click()
     const navHidden = (await page.locator('.nav-panel').count()) === 0
     await page.getByRole('button', { name: '展开导航面板' }).click()

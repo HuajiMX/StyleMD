@@ -2,12 +2,13 @@ import type { OutlineItem } from '../lib/outline'
 
 interface OutlinePanelProps {
   items: OutlineItem[]
-  activeLine: number
+  /** 当前所处章节的标题偏移；由滚动位置推出，不是光标位置。 */
+  activeOffset: number | null
   onJump: (item: OutlineItem) => void
 }
 
 /** 左侧导航：各级标题的索引，点一条就跳到正文里的对应位置。 */
-export function OutlinePanel({ items, activeLine, onJump }: OutlinePanelProps) {
+export function OutlinePanel({ items, activeOffset, onJump }: OutlinePanelProps) {
   return (
     <aside className="nav-panel">
       <div className="nav-panel-head">大纲</div>
@@ -17,7 +18,7 @@ export function OutlinePanel({ items, activeLine, onJump }: OutlinePanelProps) {
           <button
             key={`${item.offset}-${item.role}`}
             type="button"
-            className={`nav-item depth-${item.depth}${item.line === activeLine ? ' active' : ''}`}
+            className={`nav-item depth-${item.depth}${item.offset === activeOffset ? ' active' : ''}`}
             title={`第 ${item.line + 1} 行`}
             onClick={() => onJump(item)}
           >

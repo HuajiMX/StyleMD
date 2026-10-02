@@ -22,7 +22,7 @@ import { blankDocument, documentTitle, downloadText, markdownFileName, withDocum
 import { startWidthDrag } from './lib/dragResize'
 import { documentOutline, type OutlineItem } from './lib/outline'
 import { formatSavedAt, loadSession, saveSession } from './lib/session'
-import { offsetToScrollTop } from './lib/textareaScroll'
+import { offsetToScrollTop, scrollTopsForOffsets } from './lib/textareaScroll'
 import { clearRoleGroup, resetRoleStyle, updateDefaults, updatePage, upsertRoleStyle } from './lib/themeOps'
 import { useDebounced } from './lib/useDebounced'
 
@@ -78,6 +78,7 @@ export function App() {
   const iframeRef = useRef<HTMLIFrameElement>(null)
   const sourceRef = useRef<HTMLTextAreaElement>(null)
   const scrollRatioRef = useRef(0)
+  const outlineTimerRef = useRef<number | null>(null)
   /** 正在把预览的滚动同步回编辑器；这期间的编辑器 scroll 事件不再回发给预览，免得两边互相推。 */
   const syncingFromPreviewRef = useRef(false)
 
@@ -138,6 +139,7 @@ export function App() {
   const activeRole = cursorRole ?? 'body.text'
   const cursorLine = useMemo(() => markdown.slice(0, cursorOffset).split('\n').length - 1, [markdown, cursorOffset])
   const outline = useMemo(() => documentOutline(roleSpans, debouncedMarkdown), [roleSpans, debouncedMarkdown])
+  const [activeOutlineOffset, setActiveOutlineOffset] = useState<number | null>(null)
   const documentName = useMemo(() => documentTitle(markdown), [markdown])
 
   // 预览与导出共用 result.html（同一个渲染函数），预览只是额外插入了纸张外壳与 Paged.js。
@@ -213,12 +215,52 @@ export function App() {
 
   const openDialog = useCallback((role: string) => setDialogRole(role), [])
 
+  /**
+   * 滚到哪个标题区间，左侧大纲就高亮哪一条。
+   * 用镜像量出每个标题「顶到首行」所需的 scrollTop，取最后一个不超过当前位置的，
+   * 就是当前所处的章节——比按比例估算准，软换行也不会带偏。
+   */
+  const updateActiveOutline = useCallback(() => {
+    const textarea = sourceRef.current
+    if (!textarea || outline.length === 0) {
+      setActiveOutlineOffset(null)
+      return
+    }
+    const tops = scrollTopsForOffsets(
+      textarea,
+      outline.map((item) => item.offset),
+    )
+    const current = textarea.scrollTop
+    let index = 0
+    for (let position = 0; position < tops.length; position += 1) {
+      if ((tops[position] ?? 0) <= current + 6) index = position
+      else break
+    }
+    setActiveOutlineOffset(outline[index]?.offset ?? null)
+  }, [outline])
+
+  /** 滚动事件很密，而量一次镜像要重排整篇文本，所以按 120ms 节流。 */
+  const scheduleActiveOutline = useCallback(() => {
+    if (outlineTimerRef.current !== null) return
+    outlineTimerRef.current = window.setTimeout(() => {
+      outlineTimerRef.current = null
+      updateActiveOutline()
+    }, 120)
+  }, [updateActiveOutline])
+
   /** 编辑器滚动 → 预览按进度跟着走。 */
   const handleSourceScroll = useCallback((ratio: number) => {
+    scheduleActiveOutline()
     if (syncingFromPreviewRef.current) return
     scrollRatioRef.current = ratio
     iframeRef.current?.contentWindow?.postMessage({ type: 'stylemd:scroll', id: previewId, ratio }, '*')
-  }, [previewId])
+  }, [previewId, scheduleActiveOutline])
+
+  // 正文、编辑器宽度或展示模式一变，标题的位置就变了，重新算一遍高亮。
+  useEffect(() => {
+    const frame = window.requestAnimationFrame(updateActiveOutline)
+    return () => window.cancelAnimationFrame(frame)
+  }, [updateActiveOutline, editorWidth, viewMode, navOpen])
 
   // 分页完成后把当前滚动进度补发给预览：恢复会话时预览刚建好，早先那条消息没人接。
   useEffect(() => {
@@ -327,7 +369,7 @@ export function App() {
         {navOpen ? (
           <>
             <div className="nav-slot" style={{ width: navWidth }}>
-              <OutlinePanel items={outline} activeLine={cursorLine} onJump={jumpToOutline} />
+              <OutlinePanel items={outline} activeOffset={activeOutlineOffset} onJump={jumpToOutline} />
             </div>
             <span
               className="splitter"
