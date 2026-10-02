@@ -15,6 +15,7 @@ import sampleMarkdown from '../../../examples/sample-thesis.md?raw'
 import { OutlinePanel } from './components/OutlinePanel'
 import { PreviewPane } from './components/PreviewPane'
 import { EditorSchemeDialog } from './components/EditorSchemeDialog'
+import { FurnitureDialog } from './components/FurnitureDialog'
 import { Ribbon, type RibbonTab } from './components/Ribbon'
 import { SourcePane } from './components/SourcePane'
 import { StatusBar, type ViewMode } from './components/StatusBar'
@@ -63,6 +64,9 @@ export function App() {
 
   const [dialogRole, setDialogRole] = useState<string | null>(null)
   const [schemeDialogOpen, setSchemeDialogOpen] = useState(false)
+  const [furnitureArea, setFurnitureArea] = useState<'header' | 'footer' | null>(null)
+  /** 打开页眉页脚弹窗时的整页设置；「取消」用它回滚即时改动。 */
+  const furnitureSnapshot = useRef<PageSetup | null>(null)
   const [schemeLibrary, setSchemeLibrary] = useState<EditorSchemeLibrary>(() => loadSchemeLibrary())
   const currentScheme = useMemo(() => activeScheme(schemeLibrary), [schemeLibrary])
   // 工具带固定只摆 SCHEME_RIBBON_LIMIT 个，按最近使用排序，其余走「更多」。
@@ -202,6 +206,11 @@ export function App() {
   const handlePageChange = useCallback((patch: Partial<PageSetup>) => {
     changeTheme((current) => updatePage(current, patch))
   }, [changeTheme])
+
+  const handleEditFurniture = useCallback((area: 'header' | 'footer') => {
+    furnitureSnapshot.current = themeRef.current.document.page
+    setFurnitureArea(area)
+  }, [])
 
   const handleDefaultsChange = useCallback((patch: Partial<DocumentDefaults>) => {
     changeTheme((current) => updateDefaults(current, patch))
@@ -352,6 +361,7 @@ export function App() {
         onResetRole={handleResetRole}
         onOpenDialog={openDialog}
         onPageChange={handlePageChange}
+        onEditFurniture={handleEditFurniture}
         onDefaultsChange={handleDefaultsChange}
         onLoadMarkdown={setMarkdown}
         onLoadSample={handleLoadSample}
@@ -435,6 +445,22 @@ export function App() {
         onZoomChange={setZoom}
         savedAt={savedAt}
       />
+
+      {/* 页眉页脚弹窗排在样式窗口前面：从它点「样式」时，样式窗口要盖在它上面。 */}
+      {furnitureArea ? (
+        <FurnitureDialog
+          area={furnitureArea}
+          page={theme.document.page}
+          onChange={handlePageChange}
+          onOpenStyle={() => setDialogRole(furnitureArea === 'header' ? 'page.header' : 'page.footer')}
+          onCancel={() => {
+            const snapshot = furnitureSnapshot.current
+            if (snapshot) handlePageChange(snapshot)
+            setFurnitureArea(null)
+          }}
+          onClose={() => setFurnitureArea(null)}
+        />
+      ) : null}
 
       {dialogRole ? (
         <StyleDialog

@@ -473,6 +473,9 @@ export function PageGroup({
             onChange={(value) => onPageChange({ orientation: value })}
           />
         </Field>
+      </div>
+      {/* 页边距单占一行：纸张/方向一行、页边距一行，三组栏目对齐时高度一致。 */}
+      <div className="rgroup-row">
         <Field label="页边距" compact hint="上右下左，单位 mm">
           <span className="quad-row">
             {marginSides.map((side) => (
@@ -488,28 +491,59 @@ export function PageGroup({
           </span>
         </Field>
       </div>
+    </RibbonGroup>
+  )
+}
+
+/** 页眉页脚：内容用弹窗编辑（仿 Word 的左中右三段 + 域按钮），工具带上只留入口和距边距离。 */
+export function FurnitureGroup({
+  page,
+  onPageChange,
+  onEditFurniture,
+}: {
+  page: PageSetup
+  onPageChange: (patch: Partial<PageSetup>) => void
+  onEditFurniture: (area: 'header' | 'footer') => void
+}) {
+  const header = page.header ?? {}
+  const footer = page.footer ?? {}
+
+  return (
+    <RibbonGroup label="页眉页脚">
       <div className="rgroup-row">
-        <Field label="页眉" compact hint="可用域：{page} {pages} {title} {date}">
-          <input
-            type="text"
-            aria-label="页眉"
-            value={page.header?.center ?? ''}
-            onChange={(event) => onPageChange({ header: { ...page.header, center: event.target.value } })}
+        <Field label="页眉距顶部" compact hint="单位 mm，留空则在页边距区内居中">
+          <NumberInput
+            value={header.distanceMm}
+            inherited={false}
+            min={0}
+            step={1}
+            ariaLabel="页眉距顶部 mm"
+            onChange={(value) => onPageChange({ header: { ...header, distanceMm: value } })}
           />
         </Field>
-        <Field label="页脚" compact>
-          <input
-            type="text"
-            aria-label="页脚"
-            value={page.footer?.center ?? ''}
-            onChange={(event) => onPageChange({ footer: { ...page.footer, center: event.target.value } })}
-          />
-        </Field>
+        <button type="button" className="furniture-edit" onClick={() => onEditFurniture('header')}>
+          编辑页眉
+        </button>
         <ToggleChip
-          label="首页不显示页眉页脚"
+          label="首页不显示"
           checked={page.skipFurnitureOnFirstPage ?? false}
           onChange={(checked) => onPageChange({ skipFurnitureOnFirstPage: checked })}
         />
+      </div>
+      <div className="rgroup-row">
+        <Field label="页脚距底部" compact hint="单位 mm，留空则在页边距区内居中">
+          <NumberInput
+            value={footer.distanceMm}
+            inherited={false}
+            min={0}
+            step={1}
+            ariaLabel="页脚距底部 mm"
+            onChange={(value) => onPageChange({ footer: { ...footer, distanceMm: value } })}
+          />
+        </Field>
+        <button type="button" className="furniture-edit" onClick={() => onEditFurniture('footer')}>
+          编辑页脚
+        </button>
       </div>
     </RibbonGroup>
   )

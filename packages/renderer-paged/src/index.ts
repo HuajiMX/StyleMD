@@ -183,6 +183,54 @@ function cleanupEmptyTableShells() {
     if (tables[i].rows.length === 0 && tables[i].parentNode) tables[i].parentNode.removeChild(tables[i]);
   }
 }
+/**
+ * 页眉页脚的文字由 Paged.js 生成在 .pagedjs_margin-content 的 ::after 里，而 @top-* / @bottom-*
+ * 规则里的边框落在它的外层容器上，横线就画成了容器的边框。
+ * 把内容元素标成 page.header / page.footer 角色，横线才是页眉段落自己的下边框，
+ * 用户在样式面板里改这个角色就能改线，容器只负责位置。
+ *
+ * 另外：Paged.js 会把「这一段没写内容」的边距盒整块隐藏。只写左、中两段时，右段没内容，
+ * 右面的线就断了。这里让空段按有内容那段的对齐方式和高度一起参与，横线才能铺满整行。
+ */
+function annotateFurnitureRoles() {
+  var areas = [['top', 'page-header'], ['bottom', 'page-footer']];
+  var positions = ['left', 'center', 'right'];
+  var pages = document.querySelectorAll('.pagedjs_page');
+  for (var p = 0; p < pages.length; p++) {
+    for (var i = 0; i < areas.length; i++) {
+      var sections = [];
+      for (var j = 0; j < positions.length; j++) {
+        var container = pages[p].querySelector('.pagedjs_margin-' + areas[i][0] + '-' + positions[j]);
+        var content = container ? container.querySelector(':scope > .pagedjs_margin-content') : null;
+        if (!content) continue;
+        content.setAttribute('data-role', areas[i][1]);
+        // 左/中/右的位置决定对齐，别让角色里的 text-align 把三块挤到同一处。
+        content.style.textAlign = positions[j];
+        sections.push({ container: container, content: content, filled: container.classList.contains('hasContent') });
+      }
+      // 先挂上角色再量高度：角色里的字号、行距决定这一行实际多高，量早了会短一截。
+      var reference = null;
+      var lineHeight = 0;
+      for (var m = 0; m < sections.length; m++) {
+        if (!sections[m].filled) continue;
+        reference = reference || sections[m].container;
+        lineHeight = Math.max(lineHeight, sections[m].content.getBoundingClientRect().height);
+      }
+      if (!reference || !lineHeight) continue;
+      var referenceStyle = getComputedStyle(reference);
+      for (var k = 0; k < sections.length; k++) {
+        var section = sections[k];
+        if (section.filled) continue;
+        // 空段：容器照抄有内容那段的贴边对齐，内容给同样的行高，线才和相邻段齐平。
+        section.container.style.visibility = 'visible';
+        section.container.style.alignItems = referenceStyle.alignItems;
+        section.container.style.paddingTop = referenceStyle.paddingTop;
+        section.container.style.paddingBottom = referenceStyle.paddingBottom;
+        section.content.style.height = lineHeight + 'px';
+      }
+    }
+  }
+}
 function attributeSelector(ref) {
   return ref ? '[data-ref="' + String(ref).replace(/"/g, '\\"') + '"]' : '[data-ref="__stylemd_none__"]';
 }
@@ -241,6 +289,7 @@ window.addEventListener('load', async function() {
     installCaptionKeepWithNextHook();
     var flow = await window.PagedPolyfill.preview();
     cleanupEmptyTableShells();
+    annotateFurnitureRoles();
     // Paged.js 已经把 @media screen 规则丢掉了，分页完成后补回屏幕外壳与工具栏样式。
     addStyle(${screenCss});
     if (toolbar) addStyle(${toolbarCss});

@@ -1,4 +1,5 @@
 import {
+  CURRENT_SCHEMA_VERSION,
   DEFAULT_FONT_STACK,
   DEFAULT_MONO_STACK,
   DEFAULT_SANS_STACK,
@@ -15,7 +16,7 @@ const MONO = DEFAULT_MONO_STACK
  */
 
 export const techDocumentTheme: StyleTheme = {
-  schemaVersion: 1,
+  schemaVersion: CURRENT_SCHEMA_VERSION,
   id: 'tech-document',
   name: '技术文档',
   description: '无衬线、紧凑、代码友好，适合接口文档与说明手册。',
@@ -24,8 +25,8 @@ export const techDocumentTheme: StyleTheme = {
       size: 'A4',
       orientation: 'portrait',
       marginMm: { top: 20, right: 18, bottom: 20, left: 18 },
-      header: { center: '{title}', fontSizePt: 9, color: '#8a94a0' },
-      footer: { right: '{page} / {pages}', fontSizePt: 9, color: '#8a94a0' },
+      header: { center: '{title}', distanceMm: 8, fontSizePt: 9, color: '#8a94a0' },
+      footer: { right: '{page} / {pages}', distanceMm: 10, fontSizePt: 9, color: '#8a94a0' },
       skipFurnitureOnFirstPage: true,
     },
     defaults: {
@@ -133,7 +134,7 @@ export const techDocumentTheme: StyleTheme = {
 }
 
 export const thesisTheme: StyleTheme = {
-  schemaVersion: 1,
+  schemaVersion: CURRENT_SCHEMA_VERSION,
   id: 'thesis-cn',
   name: '中文学位论文',
   description: '宋体正文、黑体标题、首行缩进 2 字符、三线表、固定行距 22 磅。',
@@ -142,8 +143,9 @@ export const thesisTheme: StyleTheme = {
       size: 'A4',
       orientation: 'portrait',
       marginMm: { top: 30, right: 25, bottom: 25, left: 30 },
-      header: { center: '{title}', fontSizePt: 9, color: '#333333', borderBottom: { style: 'solid', widthPt: 0.5, color: '#999999' } },
-      footer: { center: '{page}', fontSizePt: 10, color: '#333333' },
+      // 页眉横线是页眉段落（page.header 角色）的下边框，放在角色里用户才能在样式面板里改。
+      header: { center: '{title}', distanceMm: 12, fontSizePt: 9, color: '#333333' },
+      footer: { center: '{page}', distanceMm: 12, fontSizePt: 10, color: '#333333' },
       skipFurnitureOnFirstPage: true,
     },
     defaults: {
@@ -220,7 +222,12 @@ export const thesisTheme: StyleTheme = {
     { role: 'inline.strong', font: { weight: 700 } },
     { role: 'inline.emphasis', font: { italic: true } },
     { role: 'image', paragraph: { align: 'center', spaceBeforePt: 6, spaceAfterPt: 2 } },
-    { role: 'page.header', font: { sizePt: 9, color: '#333333' }, paragraph: { align: 'center' } },
+    {
+      role: 'page.header',
+      font: { sizePt: 9, color: '#333333' },
+      paragraph: { align: 'center' },
+      border: { bottom: { style: 'solid', widthPt: 0.5, color: '#999999' } },
+    },
     { role: 'page.footer', font: { sizePt: 10, color: '#333333' }, paragraph: { align: 'center' } },
   ],
 }

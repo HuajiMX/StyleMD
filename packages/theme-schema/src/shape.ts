@@ -36,7 +36,7 @@ const family: Check = (v, p, e) => {
 }
 const lineHeight = object({ mode: choice('fixed', 'multiple'), value: number(0, true) }, ['mode', 'value'])
 const borderSide = object({ style: choice('none', 'solid', 'dashed', 'dotted', 'double'), widthPt: number(0), color })
-const furniture = object({ left: string, center: string, right: string, fontSizePt: number(0, true), color, borderTop: borderSide, borderBottom: borderSide })
+const furniture = object({ left: string, center: string, right: string, distanceMm: number(0), fontSizePt: number(0, true), color, borderTop: borderSide, borderBottom: borderSide })
 const font = object({ family, sizePt: number(0, true), weight: number(100), italic: boolean, underline: boolean, color, letterSpacingPt: number() })
 const paragraph = object({
   align: choice('left', 'center', 'right', 'justify'), lineHeight,

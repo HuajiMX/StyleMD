@@ -208,7 +208,7 @@ function furnitureBlock(
   fallback?: ComputedRoleStyle,
 ): string[] {
   if (!furniture) return []
-  return furnitureAreaSuffixes(furniture).map((suffix) => {
+  const blocks = furnitureAreaSuffixes(furniture).map((suffix) => {
     const content = furniture[suffix] ?? ''
     const fontSizePt = furniture.fontSizePt ?? fallback?.font.sizePt
     const color = furniture.color ?? fallback?.font.color
@@ -216,11 +216,25 @@ function furnitureBlock(
       `content: ${furnitureValue(content, options)};`,
       fontSizePt ? `font-size: ${pt(fontSizePt)};` : '',
       color ? `color: ${color};` : '',
-      ...borderDeclaration('top', furniture.borderTop ?? fallback?.border.top),
-      ...borderDeclaration('bottom', furniture.borderBottom ?? fallback?.border.bottom),
+      // distanceMm 是页眉距页面顶部 / 页脚距页面底部的距离，用「贴边对齐 + 内边距」实现；
+      // 不设距离时保持 Paged.js 默认的边距区居中。
+      typeof furniture.distanceMm === 'number'
+        ? area === 'top'
+          ? `align-items: flex-start;\n    padding-top: ${round(furniture.distanceMm)}mm;`
+          : `align-items: flex-end;\n    padding-bottom: ${round(furniture.distanceMm)}mm;`
+        : '',
     ].filter(Boolean)
     return `  @${area}-${suffix} {\n    ${lines.join('\n    ')}\n  }`
   })
+  // 横线画在页眉/页脚的内容元素上，不画在 Paged.js 的容器上：
+  // 内容元素挂的是 page.header / page.footer 角色，用户改角色样式（含边框）即可改这条线。
+  const selector = `[data-role="${area === 'top' ? 'page-header' : 'page-footer'}"]`
+  const contentBorders = [
+    ...borderDeclaration('top', furniture.borderTop),
+    ...borderDeclaration('bottom', furniture.borderBottom),
+  ]
+  if (contentBorders.length > 0) blocks.push(`${selector} {\n  ${contentBorders.join('\n  ')}\n}`)
+  return blocks
 }
 
 function pageBlock(styles: ComputedStyles, options: CompileCssOptions): string {

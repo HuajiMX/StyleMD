@@ -37,9 +37,6 @@ export function migrateTheme(raw: unknown): MigrationResult {
     )
   }
 
-  // 迁移链：未来新增版本时在此逐级升级，例如
-  // if (version < 2) { raw = migrateV1ToV2(raw); notes.push('已从 v1 升级到 v2'); version = 2 }
-
   for (const key of ['document', 'styles']) {
     if (raw[key] !== undefined && (key === 'styles' ? !Array.isArray(raw[key]) : !isPlainObject(raw[key]))) throw new Error(`${key} 格式不正确`)
   }
@@ -50,6 +47,20 @@ export function migrateTheme(raw: unknown): MigrationResult {
   const page = isPlainObject(document.page) ? document.page : {}
   const defaults = isPlainObject(document.defaults) ? document.defaults : {}
   const styles = Array.isArray(raw.styles) ? raw.styles : []
+
+  // v1 → v2：页眉页脚新增 distanceMm（距页面边缘的距离）。旧样式包没写过这个字段，
+  // 这里补上默认值——不然工具带上两个距离框是空的，用户看不出默认排版是多少。
+  // 迁移本身不需要用户确认，所以不产出提示。
+  const migratedPage: Record<string, unknown> = { ...page }
+  if (version < 2) {
+    for (const area of ['header', 'footer'] as const) {
+      const furniture = page[area]
+      const fallback = DEFAULT_PAGE[area]?.distanceMm
+      if (isPlainObject(furniture) && furniture.distanceMm === undefined && fallback !== undefined) {
+        migratedPage[area] = { ...furniture, distanceMm: fallback }
+      }
+    }
+  }
 
   if (!Array.isArray(raw.styles)) {
     notes.push('样式包缺少 styles 数组，已按空样式处理')
@@ -64,7 +75,7 @@ export function migrateTheme(raw: unknown): MigrationResult {
     document: {
       ...document,
       page: {
-        ...structuredClone(DEFAULT_PAGE), ...(page as StyleTheme['document']['page']),
+        ...structuredClone(DEFAULT_PAGE), ...(migratedPage as StyleTheme['document']['page']),
         ...(isPlainObject(page.marginMm) ? { marginMm: { ...DEFAULT_PAGE.marginMm!, ...page.marginMm } } : {}),
       },
       defaults: {

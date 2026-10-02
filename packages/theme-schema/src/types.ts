@@ -8,7 +8,7 @@
  */
 
 /** 样式包当前 schema 版本。修改模型结构时必须递增，并在 migrate.ts 中补一段迁移。 */
-export const CURRENT_SCHEMA_VERSION = 1
+export const CURRENT_SCHEMA_VERSION = 2
 
 export type LengthUnit = 'pt' | 'mm' | 'em' | 'ch' | 'px'
 
@@ -89,6 +89,8 @@ export interface PageFurniture {
   left?: string
   center?: string
   right?: string
+  /** 距页面边缘的距离（mm）：页眉算到页面顶部，页脚算到页面底部；留空则在该边距区里居中。 */
+  distanceMm?: number
   fontSizePt?: number
   color?: string
   borderTop?: BorderSide

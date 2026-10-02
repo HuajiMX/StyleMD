@@ -202,29 +202,29 @@ async function main() {
           }
         }),
       )
-    const tableFragments = await until(
-      async () => {
-        const fragments = await readTableFragments()
-        const keys = new Set(fragments.map((fragment) => fragment.key))
-        const consistent =
-          fragments.length > 0 &&
-          [...keys].every((key) => {
-            const group = fragments.filter((fragment) => fragment.key === key)
-            return group.every(
-              (fragment) =>
-                fragment.rows >= 2 &&
-                fragment.rowsInside &&
-                fragment.columns.length > 0 &&
-                fragment.columns.join('×') === group[0].columns.join('×'),
-            )
-          })
-        return consistent ? fragments : null
-      },
-      { label: '跨页表格分片列宽一致且行都在页内' },
-    )
+    // 预览会重排几次，这里重试到分页落定；超时也要把最后看到的几何打出来，别只留一句"等待超时"。
+    let tableFragments = []
+    let tableFragmentsConsistent = false
+    for (let attempt = 0; attempt < 100 && !tableFragmentsConsistent; attempt += 1) {
+      tableFragments = await readTableFragments()
+      const keys = new Set(tableFragments.map((fragment) => fragment.key))
+      tableFragmentsConsistent =
+        tableFragments.length > 0 &&
+        [...keys].every((key) => {
+          const group = tableFragments.filter((fragment) => fragment.key === key)
+          return group.every(
+            (fragment) =>
+              fragment.rows >= 2 &&
+              fragment.rowsInside &&
+              fragment.columns.length > 0 &&
+              fragment.columns.join('×') === group[0].columns.join('×'),
+          )
+        })
+      if (!tableFragmentsConsistent) await page.waitForTimeout(200)
+    }
     check(
       '跨页表格分片列宽一致、行不越页且没有孤行表头',
-      true,
+      tableFragmentsConsistent,
       tableFragments
         .map((fragment) => `${fragment.rows} 行/${fragment.columns.join('+')}px${fragment.rowsInside ? '' : '（有行越出页面）'}`)
         .join('，'),
@@ -609,6 +609,148 @@ async function main() {
     await page.getByRole('tab', { name: '页面', exact: true }).click()
     const marginBefore = await page.locator('.field:has-text("页边距") input').first().inputValue()
     check('页面设置面板可读', marginBefore === '30', `${marginBefore}mm`)
+
+    const headerDistance = await page.getByLabel('页眉距顶部 mm').inputValue()
+    check(
+      '新增「页眉页脚」栏目：编辑入口与距边距离',
+      headerDistance === '12' &&
+        (await page.getByRole('button', { name: '编辑页眉' }).isVisible()) &&
+        (await page.getByRole('button', { name: '编辑页脚' }).isVisible()),
+      `页眉距顶 ${headerDistance}mm`,
+    )
+
+    const furniture = await until(
+      async () => {
+        const state = await preview.locator('.pagedjs_margin-top-center > [data-role="page-header"]').first().evaluate((element) => {
+          const container = element.parentElement
+          return {
+            contentBorder: getComputedStyle(element).borderBottomWidth,
+            containerBorder: container ? getComputedStyle(container).borderBottomWidth : '',
+            alignment: getComputedStyle(element.parentElement).alignItems,
+          }
+        })
+        return state.contentBorder !== '0px' && state.containerBorder === '0px' ? state : null
+      },
+      { label: '页眉横线挂在页眉段落上' },
+    )
+    check(
+      '页眉横线是页眉段落的下边框，不画在容器上',
+      true,
+      `段落 ${furniture.contentBorder} / 容器 ${furniture.containerBorder} / 贴边对齐 ${furniture.alignment}`,
+    )
+
+    // 弹窗：左中右三段输入 + 快捷域插入；光标停在哪一段就插到哪一段。
+    await page.getByRole('button', { name: '编辑页眉' }).click()
+    const furnitureDialog = page.locator('.furniture-dialog')
+    await furnitureDialog.waitFor({ timeout: 5000 })
+    const slotBefore = await furnitureDialog.getByLabel('页眉中部').inputValue()
+    const hasThreeSlots =
+      (await furnitureDialog.getByLabel('页眉左部').count()) === 1 &&
+      (await furnitureDialog.getByLabel('页眉右部').count()) === 1
+    await furnitureDialog.getByLabel('页眉中部').click()
+    await furnitureDialog.getByLabel('页眉中部').press('End')
+    await furnitureDialog.getByRole('button', { name: '页码' }).click()
+    const slotAfter = await furnitureDialog.getByLabel('页眉中部').inputValue()
+    check(
+      '编辑页眉弹窗：三段输入 + 快捷域插入',
+      hasThreeSlots && slotBefore === '{title}' && slotAfter === '{title}{page}',
+      `三段 ${hasThreeSlots} / ${slotBefore} → ${slotAfter}`,
+    )
+
+    // 弹窗里的「样式」直接打开这个区域的样式窗口（page.header 角色），关掉后还能回到弹窗继续改。
+    await furnitureDialog.getByRole('button', { name: '样式' }).click()
+    const styleWindow = page.getByRole('dialog', { name: '页眉 样式配置' })
+    await styleWindow.waitFor({ timeout: 5000 })
+    const styleRole = await styleWindow.locator('.role-id').innerText()
+    const dialogStillOpen = await page.locator('.furniture-dialog').count()
+    await styleWindow.getByRole('tab', { name: '边框与底纹', exact: true }).click()
+    const borderSectionVisible = await styleWindow.locator('.form-section', { hasText: '边框' }).first().isVisible()
+    await styleWindow.getByRole('button', { name: '完成' }).click()
+    await page.waitForSelector('[aria-label="页眉 样式配置"]', { state: 'detached', timeout: 5000 })
+    check(
+      '弹窗里的「样式」打开页眉样式窗口',
+      styleRole === 'page.header' && dialogStillOpen === 1 && borderSectionVisible,
+      `${styleRole} / 弹窗仍在 ${dialogStillOpen} 个 / 边框页 ${borderSectionVisible}`,
+    )
+
+    // 改距离与内容要真的进到预览：距离落在边距盒的 padding-top 上，内容进页眉段落的 ::after。
+    await furnitureDialog.getByLabel('页眉左部').fill('StyleMD 页眉左')
+    await furnitureDialog.getByLabel('页眉距页面顶部 mm').fill('20')
+    await furnitureDialog.getByLabel('页眉中部').fill('StyleMD 测试页眉')
+    await furnitureDialog.getByRole('button', { name: '完成' }).click()
+    await page.waitForSelector('.furniture-dialog', { state: 'detached', timeout: 5000 })
+    const furnitureEdit = await until(
+      async () => {
+        // 首页默认不显示页眉页脚，它的 ::after 是 content: none；要在真正显示页眉的那一页上核对。
+        const states = await preview
+          .locator('.pagedjs_margin-top-center > [data-role="page-header"]')
+          .evaluateAll((elements) =>
+            elements.map((element) => ({
+              padding: getComputedStyle(element.parentElement).paddingTop,
+              content: getComputedStyle(element, '::after').content,
+            })),
+          )
+        const edited = states.find((state) => state.content.includes('测试页眉'))
+        return edited && Math.abs(Number.parseFloat(edited.padding) - 75.6) < 2 ? edited : null
+      },
+      { label: '页眉页脚改动同步到预览' },
+    )
+    check('页眉页脚弹窗改动同步到预览', true, `padding-top ${furnitureEdit.padding} / ${furnitureEdit.content}`)
+
+    // 只写左、中两段时，右段没内容也要把横线补满，不能断一截。
+    const headerRow = await until(
+      async () => {
+        const row = await preview.locator('.pagedjs_page').nth(1).evaluate((pageEl) => {
+          const rowBox = pageEl.querySelector('.pagedjs_margin-top').getBoundingClientRect()
+          const parts = ['left', 'center', 'right'].map((position) => {
+            const container = pageEl.querySelector('.pagedjs_margin-top-' + position)
+            const content = container ? container.querySelector(':scope > .pagedjs_margin-content') : null
+            const rect = content ? content.getBoundingClientRect() : null
+            return {
+              position,
+              visible: container ? getComputedStyle(container).visibility === 'visible' : false,
+              border: content ? Number.parseFloat(getComputedStyle(content).borderBottomWidth) : 0,
+              width: rect ? Math.round(rect.width) : 0,
+              height: rect ? Math.round(rect.height) : 0,
+            }
+          })
+          return { rowWidth: Math.round(rowBox.width), parts }
+        })
+        const covered = row.parts.reduce((sum, part) => sum + part.width, 0)
+        return row.parts.every((part) => part.visible && part.border > 0 && part.height > 2) &&
+          Math.abs(covered - row.rowWidth) <= 2
+          ? row
+          : null
+      },
+      { label: '只写左中两段时右侧横线不断' },
+    )
+    check(
+      '只写左中两段时右侧横线不断',
+      true,
+      headerRow.parts.map((part) => `${part.position} ${part.width}×${part.height}`).join(' / '),
+    )
+
+    // 取消要回滚到打开弹窗时的设置。
+    await page.getByRole('button', { name: '编辑页脚' }).click()
+    await furnitureDialog.waitFor({ timeout: 5000 })
+    await furnitureDialog.getByLabel('页脚中部').fill('临时内容')
+    await furnitureDialog.getByRole('button', { name: '取消' }).click()
+    await page.waitForSelector('.furniture-dialog', { state: 'detached', timeout: 5000 })
+    await page.getByRole('button', { name: '编辑页脚' }).click()
+    await furnitureDialog.waitFor({ timeout: 5000 })
+    const footerRestored = await furnitureDialog.getByLabel('页脚中部').inputValue()
+    await furnitureDialog.getByRole('button', { name: '取消' }).click()
+    await page.waitForSelector('.furniture-dialog', { state: 'detached', timeout: 5000 })
+    check('页眉页脚弹窗按取消回滚', footerRestored === '{page}', `回滚到 ${footerRestored}`)
+
+    // 把页眉改回预设值，别影响后面的截图与用例。
+    await page.getByRole('button', { name: '编辑页眉' }).click()
+    await furnitureDialog.waitFor({ timeout: 5000 })
+    await furnitureDialog.getByLabel('页眉左部').fill('')
+    await furnitureDialog.getByLabel('页眉中部').fill('{title}')
+    await furnitureDialog.getByLabel('页眉距页面顶部 mm').fill('12')
+    await furnitureDialog.getByRole('button', { name: '完成' }).click()
+    await page.waitForSelector('.furniture-dialog', { state: 'detached', timeout: 5000 })
 
     // 8. 缩放通过 postMessage 同步进预览 iframe（iframe 已加 sandbox，不能再直接改 DOM）
     const zoomBefore = await preview.locator('.pagedjs_pages').evaluate((element) => getComputedStyle(element).zoom)

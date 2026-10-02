@@ -75,4 +75,28 @@ describe('compileCss', () => {
     const css = compileCss(resolveStyles(thesis))
     expect(css).toContain('--stylemd-page-content-width: calc(210mm - 30mm - 25mm);')
   })
+
+  it('页眉页脚：距页面边缘的距离写进边距盒', () => {
+    const css = compileCss(resolveStyles(thesis), { title: 'x' })
+    const topCenter = css.match(/@top-center \{[^}]*\}/)?.[0] ?? ''
+    const bottomCenter = css.match(/@bottom-center \{[^}]*\}/)?.[0] ?? ''
+    expect(topCenter).toContain('padding-top: 12mm;')
+    expect(topCenter).toContain('align-items: flex-start;')
+    expect(bottomCenter).toContain('padding-bottom: 12mm;')
+    expect(bottomCenter).toContain('align-items: flex-end;')
+  })
+
+  it('页眉横线挂在页眉段落（page.header 角色）上，不画在边距盒容器上', () => {
+    const css = compileCss(resolveStyles(thesis), { title: 'x' })
+    const topCenter = css.match(/@top-center \{[^}]*\}/)?.[0] ?? ''
+    expect(topCenter).not.toContain('border-bottom')
+    expect(css).toMatch(/\[data-role="page-header"\] \{[^}]*border-bottom: 0\.5pt solid #999999;/)
+  })
+
+  it('旧样式包把横线写在 furniture.borderBottom 上也照样落到页眉段落上', () => {
+    const legacy = structuredClone(thesis)
+    legacy.document.page.header = { center: 'x', borderBottom: { style: 'solid', widthPt: 1, color: '#123456' } }
+    const css = compileCss(resolveStyles(legacy))
+    expect(css).toContain('[data-role="page-header"] {\n  border-bottom: 1pt solid #123456;\n}')
+  })
 })

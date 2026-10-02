@@ -32,8 +32,8 @@ export const DEFAULT_PAGE: PageSetup = {
   size: 'A4',
   orientation: 'portrait',
   marginMm: { top: 25, right: 22, bottom: 25, left: 25 },
-  header: { center: '{title}', fontSizePt: 9, color: '#666666' },
-  footer: { center: '{page} / {pages}', fontSizePt: 9, color: '#666666' },
+  header: { center: '{title}', distanceMm: 10, fontSizePt: 9, color: '#666666' },
+  footer: { center: '{page} / {pages}', distanceMm: 12, fontSizePt: 9, color: '#666666' },
   skipFurnitureOnFirstPage: true,
 }
 

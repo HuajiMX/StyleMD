@@ -7,6 +7,7 @@ import {
   EditGroup,
   EditorSchemeGroup,
   FontQuickGroup,
+  FurnitureGroup,
   PageGroup,
   ParagraphQuickGroup,
   RibbonGroup,
@@ -45,6 +46,7 @@ interface RibbonProps {
   onResetRole: (role: string) => void
   onOpenDialog: (role: string) => void
   onPageChange: (patch: Partial<StyleTheme['document']['page']>) => void
+  onEditFurniture: (area: 'header' | 'footer') => void
   onDefaultsChange: (patch: Partial<StyleTheme['document']['defaults']>) => void
   onLoadMarkdown: (text: string) => void
   onLoadSample: () => void
@@ -180,6 +182,11 @@ export function Ribbon(props: RibbonProps) {
         {props.tab === 'page' ? (
           <>
             <PageGroup page={theme.document.page} onPageChange={props.onPageChange} />
+            <FurnitureGroup
+              page={theme.document.page}
+              onPageChange={props.onPageChange}
+              onEditFurniture={props.onEditFurniture}
+            />
             <DefaultsGroup defaults={theme.document.defaults} onDefaultsChange={props.onDefaultsChange} />
           </>
         ) : null}

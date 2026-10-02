@@ -24,6 +24,29 @@ describe('migrateTheme', () => {
     expect(() => migrateTheme({ schemaVersion: 99, id: 'x', name: 'X' })).toThrow(/更新版本/)
   })
 
+  it('v1 样式包补上页眉页脚的默认距边距离', () => {
+    const { theme } = migrateTheme({
+      schemaVersion: 1,
+      id: 'x',
+      name: 'X',
+      document: { page: { header: { center: '{title}' }, footer: { center: '{page}' } } },
+      styles: [],
+    })
+    expect(theme.document.page.header?.distanceMm).toBeGreaterThan(0)
+    expect(theme.document.page.footer?.distanceMm).toBeGreaterThan(0)
+  })
+
+  it('样式包里写死的距边距离（含 0）不被迁移覆盖', () => {
+    const { theme } = migrateTheme({
+      schemaVersion: 1,
+      id: 'x',
+      name: 'X',
+      document: { page: { header: { center: '{title}', distanceMm: 0 } } },
+      styles: [],
+    })
+    expect(theme.document.page.header?.distanceMm).toBe(0)
+  })
+
   it('非对象输入抛错', () => {
     expect(() => migrateTheme('not a theme')).toThrow(/JSON 对象/)
   })
