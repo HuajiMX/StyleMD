@@ -642,9 +642,13 @@ async function main() {
     await page.keyboard.type('x')
     let previewLowest = previewBeforeEdit
     let paneShotSmallest = paneShotBytes
+    let renderingLabelSeen = false
     for (let attempt = 0; attempt < 40; attempt += 1) {
       await page.waitForTimeout(50)
       previewLowest = Math.min(previewLowest, await previewTop())
+      if (!renderingLabelSeen) {
+        renderingLabelSeen = (await page.locator('.statusbar .page-status').innerText()).includes('正在渲染')
+      }
       // 顺带盯一眼画面：重排途中两块画布都不能「都不画」，否则那块区域会闪成灰底。
       if (attempt % 4 === 0) {
         paneShotSmallest = Math.min(paneShotSmallest, (await page.screenshot({ clip: paneClip })).length)
@@ -664,6 +668,7 @@ async function main() {
     // 换到显示之后必须还原，别把用户的滚动条弄没了。
     const activeScrollbarColor = await preview.locator('html').evaluate((element) => element.style.scrollbarColor)
     check('预览恢复显示后滚动条样式也还原', activeScrollbarColor === '', `scrollbarColor = "${activeScrollbarColor}"`)
+    check('排版没排完时底部栏显示「正在渲染」', renderingLabelSeen, '完成后才换成「第 1 页，共 N 页」')
     const frameClasses = await page.evaluate(() => window.__frameClasses)
     check(
       '重排时分页画布压在最上面（不被限流）',

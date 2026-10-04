@@ -30,7 +30,7 @@ export function StatusBar(props: StatusBarProps) {
       ? `第 1 页，共 ${props.pageCount ?? 0} 页`
       : props.pagedStatus === 'error'
         ? '分页失败'
-        : '正在分页…'
+        : '正在渲染…'
 
   const viewModes: { mode: ViewMode; label: string; glyph: ReactNode }[] = [
     { mode: 'edit', label: '仅展示编辑器', glyph: <IconEditorOnly /> },
