@@ -797,6 +797,30 @@ async function main() {
     const marginBefore = await page.locator('.field:has-text("页边距") input').first().inputValue()
     check('页面设置面板可读', marginBefore === '30', `${marginBefore}mm`)
 
+    // 数字框的增减箭头要常驻：Chromium 默认只在悬停/聚焦时才画。
+    // 这里失焦并把鼠标停在角落，截图和「临时把箭头 opacity 归零」的同一区域对比；
+    // 先验证同一状态两次截图逐字节一致，免得把 PNG 编码抖动当成差异（也证明箭头不是靠悬停画出来的）。
+    await page.evaluate(() => (document.activeElement instanceof HTMLElement ? document.activeElement.blur() : undefined))
+    const spinBox = await page.locator('.quad-row input[type="number"]').first().boundingBox()
+    const spinClip = { x: spinBox.x + spinBox.width - 16, y: spinBox.y, width: 15, height: spinBox.height }
+    const shootSpinStrip = async () => {
+      await page.mouse.move(2, 2)
+      await page.waitForTimeout(80)
+      return page.screenshot({ clip: spinClip })
+    }
+    const spinIdle = await shootSpinStrip()
+    const spinIdleAgain = await shootSpinStrip()
+    const spinDimStyle = await page.addStyleTag({
+      content: 'input[type="number"]::-webkit-inner-spin-button { opacity: 0 !important; }',
+    })
+    const spinDimmed = await shootSpinStrip()
+    await spinDimStyle.evaluate((node) => node.remove())
+    check(
+      '数字输入框的增减箭头不悬停也常驻',
+      spinIdle.equals(spinIdleAgain) && !spinIdle.equals(spinDimmed),
+      `箭头区域 ${spinIdle.length}B，藏掉箭头后 ${spinDimmed.length}B`,
+    )
+
     const headerDistance = await page.getByLabel('页眉距顶部 mm').inputValue()
     check(
       '新增「页眉页脚」栏目：编辑入口与距边距离',

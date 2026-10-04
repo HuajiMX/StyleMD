@@ -323,6 +323,12 @@ body {
   min-width: 0;
 }
 .inherited-input { color: var(--muted); font-style: italic; }
+/* 数字输入框的增减箭头：Chromium 默认只在悬停/聚焦时才画出来，
+   这里让它常驻。涂的是原生控件自身，所以键盘上下键、滚轮步进的语义不变；
+   只改 opacity，不改 width —— 箭头始终占位，输入框宽度不会随悬停跳动。 */
+input[type="number"]::-webkit-inner-spin-button {
+  opacity: 1;
+}
 input[type="color"] {
   width: 26px; height: 22px; padding: 0;
   border: 1px solid var(--line-strong); border-radius: 4px;
