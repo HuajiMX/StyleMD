@@ -46,7 +46,8 @@ export function computedToInlineStyle(style: ComputedRoleStyle): CSSProperties {
 
 /**
  * 样式画廊里的字形样本：只取「看得出差别」的字体属性，并把字号收敛到卡片放得下的范围。
- * 段落的缩进、边框、底色一律不带进来，否则卡片会被撑开。
+ * 段落的缩进、边框、底色一律不带进来，否则卡片会被撑开；对齐要带，否则「行间公式」这类
+ * 靠居中表达自己的角色在卡片里看不出特征。
  */
 export function specimenStyle(style: ComputedRoleStyle, maxSizePt = 13): CSSProperties {
   return {
@@ -57,6 +58,7 @@ export function specimenStyle(style: ComputedRoleStyle, maxSizePt = 13): CSSProp
     color: style.font.color,
     letterSpacing: style.font.letterSpacingPt ? pt(style.font.letterSpacingPt) : undefined,
     textDecoration: style.font.underline ? 'underline' : undefined,
+    textAlign: style.paragraph.align,
     lineHeight: 1.4,
   }
 }

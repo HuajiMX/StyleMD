@@ -1,0 +1,2 @@
+# 生成物：由 `npm run build:math-css` 重写，正文是 300+ KB 的 base64 字体，逐行 diff 没有意义。
+packages/core/src/render/math-css.generated.ts -diff linguist-generated=true

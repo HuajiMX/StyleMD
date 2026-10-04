@@ -1,6 +1,7 @@
 import {
   PAGE_SIZES_MM,
   cssRoleName,
+  isInlineRole,
   type BorderSide,
   type ComputedRoleStyle,
   type ComputedStyles,
@@ -112,7 +113,7 @@ function counterForRole(role: string): string | undefined {
 function roleBlock(style: ComputedRoleStyle): string {
   const selector = `[data-role="${escapeCssString(cssRoleName(style.role))}"]`
   const counter = counterForRole(style.role)
-  const inline = style.role.startsWith('inline.') || style.role === 'code.inline'
+  const inline = isInlineRole(style.role)
   let fonts = fontDeclarations(style)
   if (inline && style.declaredFont) {
     const fields: Record<string, keyof NonNullable<ComputedRoleStyle['declaredFont']>> = {
@@ -126,6 +127,8 @@ function roleBlock(style: ComputedRoleStyle): string {
     ...(inline ? [] : paragraphDeclarations(style, style.numbering.enabled ? counter : undefined)),
     ...boxDeclarations(style),
   ]
+  // 行内角色未显式声明任何字体属性时，本就没有可写的东西；输出空规则只会让 CSS 变脏。
+  if (declarations.length === 0) return ''
   const blocks = [`${selector} {\n  ${declarations.join('\n  ')}\n}`]
 
   if (style.numbering.enabled && style.numbering.pattern && counter) {

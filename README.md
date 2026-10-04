@@ -24,6 +24,7 @@ npm.cmd run dev          # 打开 http://localhost:5173
 npm.cmd test              # 单元测试（样式继承、CSS 编译、渲染、校验、迁移、安全边界）
 npm.cmd run typecheck     # TypeScript 严格模式检查
 npm.cmd run build         # 构建 demo（输出 apps/demo/dist）
+npm.cmd run build:math-css # 重新生成内联公式字体样式（升级 katex 后必须跑）
 node e2e/smoke.mjs        # 端到端冒烟：用本机 Chromium 验证「改样式 → 预览更新」
 node e2e/export-check.mjs # 导出路径检查：生成 PDF 并核对页眉页脚
 ```
@@ -62,6 +63,8 @@ docs/plans               开发规划与 M0 验证结论
 
 已实现：结构角色化（含图题/表题/参考文献的启发式识别）、继承链与「基于」关系、字体 / 段落 / 边框底纹 / 编号 / 页面
 等样式属性、`@page` 纸张与页边距、页眉页脚域、标题自动编号、分页预览（Paged.js）、PDF 打印、样式包导入导出、
+数学公式（`$...$` 行内、`$$...$$` 一律行间 → KaTeX，KaTeX 样式与字体随产物内联，行内随正文、行间居中且不跨页）、
+公式角色在样式画廊与样式窗口里也直接渲染成公式（不是把 `$$...$$` 当纯文本摆着）、
 CLI 渲染与校验，以及输入安全默认值（原始 HTML 转义、链接协议白名单、样式包严格校验、预览 iframe 沙箱 + CSP）。
 
 编辑器侧已实现：CodeMirror 6 源码编辑器、Markdown 语法高亮、光标所在结构在源码里高亮、编辑器配色方案
@@ -69,4 +72,4 @@ CLI 渲染与校验，以及输入安全默认值（原始 HTML 转义、链接�
 不影响预览与导出）。
 
 未实现（见规划中的里程碑）：目录与页码联动、图表编号与交叉引用、渲染输出侧的代码块高亮（Shiki）、脚注、图文环绕、
-DOCX / Typst 后端、桌面壳打包。
+公式编号自动递增与交叉引用（现阶段用 KaTeX 的 `\tag` 手工编号）、DOCX / Typst 后端、桌面壳打包。

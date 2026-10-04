@@ -34,6 +34,7 @@ npm.cmd run dev        # 启动 demo：http://localhost:5173
 npm.cmd test           # vitest 单元测试
 npm.cmd run typecheck  # tsc --noEmit（strict）
 npm.cmd run build      # 构建 demo 到 apps/demo/dist
+npm.cmd run build:math-css   # 重新生成内联公式字体样式（升级 katex 后必须跑）
 node e2e/smoke.mjs     # 端到端冒烟（需本机 Chromium，可用 STYLEMD_CHROME 指定）
 node e2e/export-check.mjs
 npm.cmd run cli -- render examples/sample-thesis.md --theme thesis-cn --out out.html
@@ -50,7 +51,7 @@ npm.cmd run cli -- render examples/sample-thesis.md --theme thesis-cn --out out.
 ## Testing Guidelines
 
 - vitest，用例放在 `packages/*/test/*.test.ts`，用 `describe` / `it` 描述**行为**而非实现。
-- UI 交互由 `node e2e/smoke.mjs` 兜住（当前 69 项：分页、跨页表格分片、题注与对象同页、页眉页脚弹窗与域插入/样式入口、光标定位、样式编辑、行内与段落控件、布局与分隔条、文件菜单、会话恢复、双向滚动同步、大纲跳转与滚动高亮）。改了 UI 就同步改断言，别让断言失效成空转。
+- UI 交互由 `node e2e/smoke.mjs` 兜住（当前 75 项：分页、跨页表格分片、题注与对象同页、公式排版与内联字体、公式样例在画廊与样式窗口里的渲染与居中、页眉页脚弹窗与域插入/样式入口、光标定位、样式编辑、行内与段落控件、布局与分隔条、文件菜单、会话恢复、双向滚动同步、大纲跳转与滚动高亮）。改了 UI 就同步改断言，别让断言失效成空转。
 - 新增内置样式包必须能通过 `validateTheme`（`presets.test.ts` 会兜住）。
 - 改动 CSS 编译或 HTML 渲染输出时同步更新断言，并说明预期变化。
 - 提交前至少跑 `npm.cmd test` 与 `npm.cmd run typecheck`；涉及 UI 再跑 `node e2e/smoke.mjs`。
@@ -67,10 +68,11 @@ npm.cmd run cli -- render examples/sample-thesis.md --theme thesis-cn --out out.
 2. 样式模型只描述数据，渲染后端负责翻译；换后端不改模型。
 3. 预览与导出共用 `build()` 产出的 HTML，禁止另起一套渲染路径。
 4. 编辑器与预览的定位、滚动同步只走 `lib/textareaScroll.ts` 与 postMessage 协议，不要在别处另写一套估算逻辑。
+5. 公式由 `core` 的 remark-math → KaTeX 产出（`$...$` 行内、`$$...$$` 一律行间，单行 `$$` 也算，由 `promoteDisplayMath` 统一），KaTeX 样式与 woff2 字体内联在 `packages/core/src/render/math-css.generated.ts`（`npm.cmd run build:math-css` 重新生成）。别改成 CDN 或相对路径：预览是 srcdoc（没有自己的文档地址），离线导出的 HTML 也可能被搬到任意目录。
 
 ## Security & Configuration Tips
 
 - Markdown 里的原始 HTML 默认转义，仅在显式 `allowRawHtml` 时直出。
 - 内联脚本需转义 `</script`、`<!--`，并用函数式替换（`replace(x, () => payload)`），否则 `$'` 会截断脚本。
 - 会话存档写在 `localStorage`，读取一律校验；存档损坏或超配额时静默回落，不能让编辑功能受影响。
-- 只打包可再分发字体（思源 / Noto）。
+- 只打包可再分发字体（思源 / Noto / KaTeX，均为 OFL）。

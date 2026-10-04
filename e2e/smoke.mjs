@@ -4,6 +4,7 @@
  * 覆盖的链路：
  *   光标定位 → 功能区字体/段落跟随 → 点开样式窗口 → 窗口内改字号 → 预览即时刷新
  *   → 切换样式包（编号与首行缩进生效）→ 页面设置 → 预览缩放到 iframe
+ *   公式：行内/行间 KaTeX 排版、字体内联生效、行间公式居中且不跨页
  *
  * 运行：node e2e/smoke.mjs
  * 可选：STYLEMD_CHROME 指定 chromium 可执行文件路径
@@ -247,6 +248,112 @@ async function main() {
       { label: '表注/图注与被注对象同页' },
     )
     check('表注/图注与被注对象同页', true, captionAudit.map((caption) => `${caption.role}@第${caption.page + 1}页`).join('，'))
+
+    // 2.7 数学公式：预览是 srcdoc + CSP（font-src data:），字体必须靠内联 woff2 才生效；
+    //     行间公式要居中、要整块留在同一页，不能被 Paged.js 从中间切开。
+    const mathAudit = await until(
+      async () => {
+        const audit = await preview.locator('.pagedjs_pages').evaluate(async (root) => {
+          if (document.fonts) await document.fonts.ready
+          const wrappers = Array.from(root.querySelectorAll('[data-role="math-inline"], [data-role="math-block"]'))
+          if (wrappers.length === 0) return null
+          const inlines = wrappers.filter((element) => element.getAttribute('data-role') === 'math-inline')
+          const blocks = wrappers.filter((element) => element.getAttribute('data-role') === 'math-block')
+          const union = (boxes) =>
+            boxes.length
+              ? {
+                  left: Math.min(...boxes.map((rect) => rect.left)),
+                  right: Math.max(...boxes.map((rect) => rect.right)),
+                  top: Math.min(...boxes.map((rect) => rect.top)),
+                  bottom: Math.max(...boxes.map((rect) => rect.bottom)),
+                }
+              : null
+          const boundsOf = (element) => {
+            const boxes = [element, ...element.querySelectorAll('.katex-base')]
+              .map((node) => node.getBoundingClientRect())
+              .filter((rect) => rect.width > 0 || rect.height > 0)
+            return union(boxes)
+          }
+          // 居中只量公式本体：外层 div 是整宽的，把它算进去会让任何位置都「居中」。
+          const inkOf = (element) =>
+            union(
+              Array.from(element.querySelectorAll('.katex-base'))
+                .map((node) => node.getBoundingClientRect())
+                .filter((rect) => rect.width > 0 || rect.height > 0),
+            )
+          const blocksFit = blocks.every((block) => {
+            const content = block.closest('.pagedjs_page_content')
+            const box = boundsOf(block)
+            if (!content || !box) return false
+            const bounds = content.getBoundingClientRect()
+            return box.top >= bounds.top - 1 && box.bottom <= bounds.bottom + 1
+          })
+          const blocksCentered = blocks.every((block) => {
+            const content = block.closest('.pagedjs_page_content')
+            const box = inkOf(block)
+            if (!content || !box) return false
+            const bounds = content.getBoundingClientRect()
+            return Math.abs(box.left - bounds.left - (bounds.right - box.right)) <= 4
+          })
+          return {
+            total: wrappers.length,
+            inline: inlines.length,
+            block: blocks.length,
+            blocksFit,
+            blocksCentered,
+            inlineDisplay: inlines.length ? getComputedStyle(inlines[0]).display : '',
+            blockBreakInside: blocks.length ? getComputedStyle(blocks[0]).breakInside : '',
+            annotations: root.querySelectorAll('annotation[encoding="application/x-tex"]').length,
+            tags: root.querySelectorAll('.katex-tag').length,
+            fontReady: document.fonts ? document.fonts.check('1em KaTeX_Main') : false,
+          }
+        })
+        return audit && audit.inline > 0 && audit.block > 0 ? audit : null
+      },
+      { label: '预览里出现行内与行间公式' },
+    )
+    check(
+      '预览排版 KaTeX 公式并保留 TeX 原文',
+      mathAudit.annotations >= mathAudit.total,
+      `${mathAudit.inline} 个行内 / ${mathAudit.block} 个行间，${mathAudit.annotations} 条 TeX 注解`,
+    )
+    check('公式字体以内联 data URI 在预览里生效', mathAudit.fontReady, 'document.fonts.check(KaTeX_Main) = true')
+    check(
+      '行内公式随正文排，行间公式居中且不跨页',
+      mathAudit.inlineDisplay === 'inline' && mathAudit.blocksCentered && mathAudit.blocksFit && mathAudit.blockBreakInside === 'avoid',
+      `行内 display=${mathAudit.inlineDisplay}，行间 break-inside=${mathAudit.blockBreakInside}，居中=${mathAudit.blocksCentered}，同页=${mathAudit.blocksFit}`,
+    )
+    check('行间公式的 \\tag 编号一起排版', mathAudit.tags >= 1, `${mathAudit.tags} 个公式编号`)
+
+    // 2.8 样式画廊与样式窗口里的公式样例：要交给 KaTeX 真渲染（而不是把 $$...$$ 当纯文本摆着），
+    //     行间公式的样例还要按角色默认居中，否则卡片上看不出这个角色的特征。
+    const mathCard = await page.locator('.style-card[aria-label="行间公式"]').evaluate((node) => {
+      const sample = node.querySelector('.style-card-sample')
+      return {
+        rendered: Boolean(sample.querySelector('.katex')),
+        display: Boolean(sample.querySelector('.katex-display')),
+        tex: sample.querySelector('annotation[encoding="application/x-tex"]')?.textContent ?? '',
+        align: getComputedStyle(sample).textAlign,
+        overflow: sample.scrollHeight - sample.clientHeight,
+      }
+    })
+    check(
+      '样式画廊的行间公式样例真渲染成公式并居中',
+      mathCard.rendered && mathCard.display && mathCard.tex.includes('\\Delta') && mathCard.align === 'center',
+      `${mathCard.tex} / text-align=${mathCard.align} / 溢出 ${mathCard.overflow}px`,
+    )
+    await page.locator('.style-card[aria-label="行间公式"]').click()
+    await page.locator('.style-dialog .sample-box .katex').first().waitFor({ timeout: 5000 })
+    const dialogMath = await page.locator('.style-dialog .sample-box').evaluate((node) => ({
+      tex: node.querySelector('annotation[encoding="application/x-tex"]')?.textContent ?? '',
+      align: getComputedStyle(node.firstElementChild).textAlign,
+    }))
+    check(
+      '样式窗口的预览里公式同样是渲染出来的',
+      dialogMath.tex.includes('\\Delta') && dialogMath.align === 'center',
+      `${dialogMath.tex} / text-align=${dialogMath.align}`,
+    )
+    await page.keyboard.press('Escape')
 
     check(
       '窗格标题栏已移除，字数与缩放收进底部栏',

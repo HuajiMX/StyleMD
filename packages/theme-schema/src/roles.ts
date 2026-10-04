@@ -1,3 +1,5 @@
+import type { RoleStyle } from './types'
+
 /**
  * 结构角色注册表：样式挂在角色上，角色对应 Markdown AST 的语义节点。
  * 这是"样式管理器"里角色树的唯一数据来源。
@@ -12,6 +14,7 @@ export type RoleCategory =
   | '图片'
   | '表格'
   | '行内'
+  | '公式'
   | '页面'
 
 export interface RoleDefinition {
@@ -21,6 +24,16 @@ export interface RoleDefinition {
   description: string
   /** 样式管理器里用于实时预览的样例文字。 */
   sample: string
+  /**
+   * 样例的呈现方式。公式角色要用 KaTeX 真渲染，不能把 `$$...$$` 当纯文本摆出来——
+   * 那既看不出居中，也看不出字号。默认 'text'。
+   */
+  sampleKind?: 'text' | 'inline-math' | 'display-math'
+  /**
+   * 角色自带的兜底样式：与主题里的 RoleStyle 同一套字段，主题声明了这个角色就以主题为准。
+   * 只写"这个角色的语义本来就该如此"的属性（例如行间公式居中），别把该由主题决定的排版塞进来。
+   */
+  defaults?: Omit<RoleStyle, 'role'>
 }
 
 export const ROLES: RoleDefinition[] = [
@@ -47,6 +60,25 @@ export const ROLES: RoleDefinition[] = [
 
   { id: 'code.block', label: '代码块', category: '代码', description: '围栏代码块', sample: 'const theme = loadTheme("thesis-cn");\nrender(doc, theme);' },
   { id: 'code.inline', label: '行内代码', category: '代码', description: '反引号包裹的内容', sample: 'printToPDF()' },
+
+  {
+    id: 'math.inline',
+    label: '行内公式',
+    category: '公式',
+    description: 'Markdown 的 $...$，随正文字号排版',
+    sample: 'E = mc^2',
+    sampleKind: 'inline-math',
+  },
+  {
+    id: 'math.block',
+    label: '行间公式',
+    category: '公式',
+    description: 'Markdown 的 $$...$$，行间公式，居中（写成一行也算）',
+    // 反斜杠要原样保留：普通字符串里的 `\f` 会变成换页符，样例就废了。
+    sample: String.raw`\Delta = b^2 - 4ac`,
+    sampleKind: 'display-math',
+    defaults: { paragraph: { align: 'center' } },
+  },
 
   { id: 'image', label: '图片', category: '图片', description: 'Markdown 图片语法', sample: '' },
 
@@ -86,6 +118,17 @@ export function roleCategory(id: string): RoleCategory | undefined {
  */
 export function cssRoleName(role: string): string {
   return role.replace(/\./g, '-')
+}
+
+/**
+ * 行内角色：段落属性（行距、缩进、段前段后）对它们没有意义，CSS 只写字体声明，
+ * 没显式声明的字体属性继续从所在段落继承。
+ * `code.inline` 与 `math.inline` 是"后缀式"命名，不在 `inline.*` 前缀里，必须一起列出。
+ */
+const INLINE_ROLE_IDS = new Set(['code.inline', 'math.inline'])
+
+export function isInlineRole(role: string): boolean {
+  return role.startsWith('inline.') || INLINE_ROLE_IDS.has(role)
 }
 
 /** 无法识别角色时的兜底：一律按正文处理，保证不会丢内容。 */

@@ -20,6 +20,7 @@ import { clamp, useDialogFrame } from '../lib/dialogFrame'
 import { FONT_FAMILIES, FONT_WEIGHTS } from '../lib/typePresets'
 import { AlignSegmented } from './align-control'
 import { Field, FontSizeCombo, IconToggle, NumberInput, Row, Section, SelectInput, ToggleChip } from './fields'
+import { isMathSample, MathSample } from './MathSample'
 
 type DialogTab = 'font' | 'paragraph' | 'border' | 'numbering' | 'advanced'
 
@@ -629,7 +630,13 @@ export function StyleDialog(props: StyleDialogProps) {
             {/* 预览放在主体表单后面，每个选项卡里都有；不固定在窗口底部。 */}
             <Section title="预览" note="用当前计算样式渲染，不进分页器">
               <div className="sample-box">
-                <div style={computedToInlineStyle(resolved)}>{definition?.sample || roleLabel(role)}</div>
+                <div style={computedToInlineStyle(resolved)}>
+                  {definition && isMathSample(definition) ? (
+                    <MathSample definition={definition} />
+                  ) : (
+                    definition?.sample || roleLabel(role)
+                  )}
+                </div>
               </div>
             </Section>
           </div>

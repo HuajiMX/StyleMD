@@ -144,6 +144,10 @@ function classifyBlock(
       return 'blockquote'
     case 'code':
       return 'code.block'
+    case 'inlineMath':
+      return 'math.inline'
+    case 'math':
+      return 'math.block'
     case 'table':
       return 'table'
     case 'thematicBreak':

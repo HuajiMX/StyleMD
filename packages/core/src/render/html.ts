@@ -2,6 +2,8 @@ import type { Root } from 'mdast'
 import { FALLBACK_ROLE, cssRoleName } from '@stylemd/theme-schema'
 import { childrenOf, type AnyNode } from '../internal/node'
 import { annotateRoles } from '../roles/annotate'
+import { MATH_BASE_CSS, renderMath } from './math'
+import { KATEX_CSS } from './math-css.generated'
 
 export interface RenderOptions {
   /** 文档标题，用于 <title> 与页眉页脚域。 */
@@ -26,6 +28,11 @@ export interface RenderOptions {
 export interface RenderResult {
   html: string
   warnings: string[]
+  /**
+   * 片段里是否含公式。只取 renderBody 片段自己拼页面的调用方必须据此补 KATEX_CSS，
+   * 否则公式只有骨架没有字体（build() 会自动带上）。
+   */
+  hasMath: boolean
 }
 
 interface RenderContext {
@@ -33,6 +40,8 @@ interface RenderContext {
   warnings: string[]
   sectionIndex: number
   rawHtmlWarned: boolean
+  /** 文档里出现过公式时才把 KaTeX 样式塞进 <head>，普通文档的产物大小不受影响。 */
+  hasMath: boolean
   definitions: Map<string, AnyNode>
 }
 
@@ -48,6 +57,7 @@ const INLINE_TYPES = new Set([
   'image',
   'imageReference',
   'textDirective',
+  'inlineMath',
 ])
 
 function escapeHtml(value: string): string {
@@ -114,6 +124,16 @@ function renderNode(node: AnyNode, ctx: RenderContext): string {
       return `<del${roleAttribute(node)}>${renderChildren(node, ctx)}</del>`
     case 'inlineCode':
       return `<code${roleAttribute(node)}>${escapeHtml(node.value ?? '')}</code>`
+    case 'inlineMath':
+    case 'math': {
+      ctx.hasMath = true
+      const display = node.type === 'math'
+      const result = renderMath(node.value ?? '', display)
+      if (result.error) ctx.warnings.push(result.error)
+      const tag = display ? 'div' : 'span'
+      const className = display ? 'stylemd-math stylemd-math-block' : 'stylemd-math stylemd-math-inline'
+      return `<${tag}${roleAttribute(node)} class="${className}">${result.html}</${tag}>`
+    }
     case 'link': {
       const url = safeUrl(node.url ?? '', false, ctx)
       const title = node.title ? ` title="${escapeAttribute(node.title)}"` : ''
@@ -246,6 +266,7 @@ function createContext(options: RenderOptions, root: AnyNode): RenderContext {
     warnings: [],
     sectionIndex: 0,
     rawHtmlWarned: false,
+    hasMath: false,
     definitions,
   }
 }
@@ -260,7 +281,7 @@ export function renderBody(tree: Root, options: RenderOptions = {}): RenderResul
   const root = tree as unknown as AnyNode
   const source = options.autoAnnotate !== false && !hasRoleAnnotation(root) ? annotateRoles(tree).tree : tree
   const ctx = createContext(options, root)
-  return { html: renderNode(source as unknown as AnyNode, ctx), warnings: ctx.warnings }
+  return { html: renderNode(source as unknown as AnyNode, ctx), warnings: ctx.warnings, hasMath: ctx.hasMath }
 }
 
 /** 渲染完整 HTML 文档：预览与导出共用同一个函数，保证"所见即所得"（规划 §7 硬约束）。 */
@@ -271,6 +292,8 @@ export function renderHtmlDocument(tree: Root, options: RenderOptions & { styles
   const body = renderNode(source as unknown as AnyNode, ctx)
   const language = options.language ?? 'zh-CN'
   const title = escapeHtml(options.title ?? 'StyleMD 文档')
+  // KaTeX 的样式表带着内联字体，只在有公式时附加；转义规则与主题样式一致，避免 `</style>` 提前收尾。
+  const mathStyles = ctx.hasMath ? `<style>\n${`${MATH_BASE_CSS}\n${KATEX_CSS}`.replace(/</g, '\\3c ')}\n</style>\n` : ''
   const html = `<!doctype html>
 <html lang="${escapeAttribute(language)}">
 <head>
@@ -279,7 +302,7 @@ export function renderHtmlDocument(tree: Root, options: RenderOptions & { styles
 <style>
 ${options.stylesheet.replace(/</g, '\\3c ')}
 </style>
-${options.extraHead ?? ''}
+${mathStyles}${options.extraHead ?? ''}
 </head>
 <body class="stylemd-document">
 ${body}
@@ -287,5 +310,5 @@ ${options.extraBodyEnd ?? ''}
 </body>
 </html>
 `
-  return { html, warnings: ctx.warnings }
+  return { html, warnings: ctx.warnings, hasMath: ctx.hasMath }
 }

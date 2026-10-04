@@ -82,6 +82,9 @@ export const techDocumentTheme: StyleTheme = {
       paddingPt: 8,
     },
     { role: 'code.inline', font: { family: MONO, sizePt: 9.5, color: '#a40e26' }, background: { color: '#f0f2f5' }, paddingPt: 1 },
+    // 公式的字体与符号由 KaTeX 自己排；行间公式居中、行内公式随正文字号，都是角色自带兜底（见 roles.ts），
+    // 主题这里只补段间距。
+    { role: 'math.block', paragraph: { spaceBeforePt: 10, spaceAfterPt: 10 } },
     {
       role: 'blockquote',
       basedOn: 'body.text',
@@ -210,6 +213,8 @@ export const thesisTheme: StyleTheme = {
       paddingPt: 6,
     },
     { role: 'code.inline', font: { family: MONO, sizePt: 10.5 } },
+    // 与技术文档同理：居中来自角色兜底，主题只补段间距（正文的首行缩进不会带进来，math.block 不继承 body.text）。
+    { role: 'math.block', paragraph: { spaceBeforePt: 12, spaceAfterPt: 12 } },
     { role: 'blockquote', basedOn: 'body.text', font: { sizePt: 10.5, color: '#333333' }, paragraph: { indentLeftPt: 24, spaceAfterPt: 8, firstLineIndentChars: 0 } },
     { role: 'list.unordered', basedOn: 'body.text', paragraph: { indentLeftPt: 24, spaceAfterPt: 0, firstLineIndentChars: 0 } },
     { role: 'list.ordered', basedOn: 'body.text', paragraph: { indentLeftPt: 24, spaceAfterPt: 0, firstLineIndentChars: 0 } },

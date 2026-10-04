@@ -3,6 +3,7 @@ import { ROLES, type ComputedStyles, type StyleTheme } from '@stylemd/theme-sche
 import { specimenStyle, singleLineSample } from '../lib/inlineStyle'
 import { explicitGroupCount } from '../lib/roleStyle'
 import { IconPencil } from './icons'
+import { isMathSample, MathSample } from './MathSample'
 
 interface StyleCardProps {
   theme: StyleTheme
@@ -46,7 +47,7 @@ export function StyleCard({ theme, computed, roleId, active, onPick }: StyleCard
       onClick={() => onPick(roleId)}
     >
       <span className="style-card-sample" style={specimenStyle(resolved)}>
-        {singleLineSample(definition.sample)}
+        {isMathSample(definition) ? <MathSample definition={definition} /> : singleLineSample(definition.sample)}
       </span>
       <span className="style-card-foot">
         <span className="style-card-name">{definition.label}</span>

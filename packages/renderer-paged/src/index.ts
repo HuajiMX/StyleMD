@@ -101,11 +101,13 @@ if (window.parent !== window) document.addEventListener('click', function(event)
 // 跨页表格：Paged.js 把一张表按页切成多个独立 <table>，每片只按自己那部分内容算列宽，跨页就对不齐。
 // 注意不能等分页完再统一列宽：那会把行重新排高、把内容挤出页面（实测连表格下框线都会跟着跑出页外）。
 // 必须在分页之前按页面内容宽度把列宽定死，让 Paged.js 从一开始就按最终几何分页。
-function pageContentWidth() {
-  var value = getComputedStyle(document.documentElement).getPropertyValue('--stylemd-page-content-width');
-  if (!value || !value.trim()) return 0;
+/** 页面内容宽度以 CSS 变量暴露；没有它说明这份文档不含 @page（includePage: false），本就不该定列宽。 */
+function pageContentWidthValue() {
+  return getComputedStyle(document.documentElement).getPropertyValue('--stylemd-page-content-width').trim();
+}
+function measurePageContentWidth(value) {
   var probe = document.createElement('div');
-  probe.setAttribute('style', 'position:absolute;left:-10000px;top:0;visibility:hidden;width:' + value.trim() + ';');
+  probe.setAttribute('style', 'position:absolute;left:-10000px;top:0;visibility:hidden;width:' + value + ';');
   document.body.appendChild(probe);
   var width = probe.offsetWidth;
   probe.parentNode.removeChild(probe);
@@ -125,8 +127,16 @@ function measureColumnWidths(table) {
 // 分页前记下每张表的表头：Paged.js 复制出的续页分片只带行、不带 <thead>，靠它补回去。
 var splitTableHeaders = {};
 
-function stabilizeTableLayouts() {
-  var width = pageContentWidth();
+async function stabilizeTableLayouts() {
+  var value = pageContentWidthValue();
+  if (!value) return;
+  // 宿主刚挂上 iframe 时（React 首帧）这里可能还没有布局视口，量出来的宽度是 0；
+  // 0 会让「定列宽 + 续页补表头」整段失效，跨页表格就退回自然列宽。量到宽度为止再继续。
+  var width = measurePageContentWidth(value);
+  for (var attempt = 0; attempt < 60 && !width; attempt++) {
+    await new Promise(function (resolve) { requestAnimationFrame(function () { resolve(); }); });
+    width = measurePageContentWidth(value);
+  }
   if (!width) return;
   var tables = document.querySelectorAll('table[data-role="table"]');
   for (var i = 0; i < tables.length; i++) {
@@ -284,7 +294,7 @@ window.addEventListener('load', async function() {
   try {
     await document.fonts.ready;
     // 表格列宽必须在分页前定死：分页后再改会把行重新排高、把内容挤出页面。
-    stabilizeTableLayouts();
+    await stabilizeTableLayouts();
     installSplitTableHeaderHook();
     installCaptionKeepWithNextHook();
     var flow = await window.PagedPolyfill.preview();

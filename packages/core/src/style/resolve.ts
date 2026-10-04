@@ -1,5 +1,6 @@
 import {
   ROLES,
+  getRole,
   type ComputedRoleStyle,
   type ComputedStyles,
   type DocumentDefaults,
@@ -114,7 +115,14 @@ export function inheritanceChain(role: string, byRole: Map<string, RoleStyle>): 
 function computeRole(role: string, byRole: Map<string, RoleStyle>, defaults: DocumentDefaults): ComputedRoleStyle {
   const chain = inheritanceChain(role, byRole)
   let resolved = baseFromDefaults(defaults)
+  // 角色自带的兜底（例如行间公式居中）夹在文档默认值与主题声明之间：主题一声明就盖过它。
+  const roleDefaults = getRole(role)?.defaults
+  if (roleDefaults) resolved = mergeRoleStyle(resolved, { role, ...roleDefaults })
   const declaredFont: NonNullable<ComputedRoleStyle['declaredFont']> = {}
+  // 角色兜底里的字体同样算"声明过"：否则行内角色的兜底字体会被当成继承值而丢掉。
+  for (const [key, value] of Object.entries(roleDefaults?.font ?? {})) {
+    if (value !== undefined) Object.assign(declaredFont, { [key]: value })
+  }
   // 从继承链的根部向叶子叠加，保证叶子的显式属性最终生效。
   for (const id of [...chain].reverse()) {
     const style = byRole.get(id)

@@ -11,6 +11,7 @@ export * from './roles/locate'
 export * from './style/resolve'
 export * from './style/compile-css'
 export * from './render/html'
+export * from './render/math'
 export type { AnyNode } from './internal/node'
 
 export interface BuildOptions extends CompileCssOptions {

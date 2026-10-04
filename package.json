@@ -15,6 +15,7 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit",
+    "build:math-css": "node scripts/build-math-css.mjs",
     "cli": "tsx apps/cli/src/cli.ts"
   },
   "devDependencies": {
