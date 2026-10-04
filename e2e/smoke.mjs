@@ -604,6 +604,75 @@ async function main() {
       `预览 ${previewAfterWheel}px → 编辑器 ${editorAfterWheel}px`,
     )
 
+    // 4i-3. 打一个字就会重排整篇。预览用前后两块画布：前面那块一直亮着，新内容在背面排完才换上来，
+    //       所以既不该出现"先清空再重排"的闪白，也不该跳回文首。这里采样打字后的一段时间，
+    //       预览的滚动位置必须一直留在原处（退回 0 就是那个"闪回开头再跳回来"的毛病）。
+    const previewTop = () => preview.locator('html').evaluate((element) => Math.round(element.scrollTop))
+    // 分页期间那块画布的身份会短暂变成 .preview-iframe-incoming（压在最上面、元素可见、内容藏着）。
+    // 这一步必须压在上面：被完全遮住的 iframe，浏览器会把它的 requestAnimationFrame 限流到 1 帧/秒，
+    // Paged.js 每排一页等一帧，正文一长就能从 0.3 秒拖到 15 秒。
+    await page.evaluate(() => {
+      window.__frameClasses = []
+      for (const frame of document.querySelectorAll('.preview-frame iframe')) {
+        new MutationObserver(() => window.__frameClasses.push(frame.className)).observe(frame, {
+          attributes: true,
+          attributeFilter: ['class'],
+        })
+      }
+    })
+    const canvases = await page.evaluate(() => ({
+      active: document.querySelectorAll('iframe.preview-iframe').length,
+      other: document.querySelectorAll('iframe.preview-iframe-spare, iframe.preview-iframe-incoming').length,
+    }))
+    check(
+      '预览用两块画布（一块显示、一块预排）',
+      canvases.active === 1 && canvases.other === 1,
+      `显示 ${canvases.active} 块 / 预排 ${canvases.other} 块`,
+    )
+
+    await setScrollTop(page, 1e7)
+    const previewBeforeEdit = await until(async () => {
+      const top = await previewTop()
+      return top > 200 ? top : 0
+    }, { label: '预览滚到文末', timeout: 10000 })
+    const paneClip = await page.locator('.preview-pane').boundingBox()
+    const paneShotBytes = (await page.screenshot({ clip: paneClip })).length
+    await page.locator('.source-pane .cm-content').click()
+    await page.keyboard.press('End')
+    await page.keyboard.type('x')
+    let previewLowest = previewBeforeEdit
+    let paneShotSmallest = paneShotBytes
+    for (let attempt = 0; attempt < 40; attempt += 1) {
+      await page.waitForTimeout(50)
+      previewLowest = Math.min(previewLowest, await previewTop())
+      // 顺带盯一眼画面：重排途中两块画布都不能「都不画」，否则那块区域会闪成灰底。
+      if (attempt % 4 === 0) {
+        paneShotSmallest = Math.min(paneShotSmallest, (await page.screenshot({ clip: paneClip })).length)
+      }
+    }
+    check(
+      '改动正文重排时预览不闪回文首',
+      previewLowest > previewBeforeEdit * 0.5,
+      `改前 ${previewBeforeEdit}px，重排全程最低 ${previewLowest}px`,
+    )
+    check(
+      '改动正文重排时预览不空白',
+      paneShotSmallest > paneShotBytes * 0.5,
+      `截图 ${paneShotBytes} 字节 → 重排全程最小 ${paneShotSmallest} 字节（空白约 4k）`,
+    )
+    // 分页期间那块画布会把原生滚动条涂透明（visibility 盖不住它，拇指会跟着文档高度一涨一缩）；
+    // 换到显示之后必须还原，别把用户的滚动条弄没了。
+    const activeScrollbarColor = await preview.locator('html').evaluate((element) => element.style.scrollbarColor)
+    check('预览恢复显示后滚动条样式也还原', activeScrollbarColor === '', `scrollbarColor = "${activeScrollbarColor}"`)
+    const frameClasses = await page.evaluate(() => window.__frameClasses)
+    check(
+      '重排时分页画布压在最上面（不被限流）',
+      frameClasses.includes('preview-iframe-incoming'),
+      `画布身份变化：${[...new Set(frameClasses)].join(' → ')}`,
+    )
+    await page.keyboard.press('Backspace')
+    await page.waitForTimeout(600)
+
     // 4j. 三个展示模式
     await page.getByRole('button', { name: '仅展示编辑器' }).click()
     const editOnly = (await page.locator('.preview-pane').count()) === 0 && (await page.locator('.source-pane').count()) === 1
@@ -612,6 +681,12 @@ async function main() {
     await page.getByRole('button', { name: '同时展示编辑器和预览' }).click()
     const both = (await page.locator('.source-pane').count()) === 1 && (await page.locator('.preview-pane').count()) === 1
     check('三种展示模式可以切换', editOnly && previewOnly && both, '仅编辑器 / 仅预览 / 同时展示')
+
+    // 预览重新挂载时，备用画布会把它装着的那一版（更早的）也重新排一遍；它不能把自己抬成 incoming
+    // 露在最上面，否则切回双栏看到的会是旧内容。
+    await page.waitForTimeout(1500)
+    const staleOnTop = await page.locator('iframe.preview-iframe-incoming').count()
+    check('切回双栏后不会把更早一版露在最上面', staleOnTop === 0, `.preview-iframe-incoming = ${staleOnTop}`)
 
     // 5. 点击样式卡片 → 打开配置窗口，窗口内改字号即时生效
     await page.getByRole('button', { name: '一级标题', exact: true }).first().click()

@@ -58,6 +58,42 @@ export function injectPagedPolyfill(html: string, polyfillSource: string, messag
 window.__stylemdPaged = { status: 'pending', pages: 0 };
 window.__stylemdZoom = null;
 var applyingScroll = false;
+// 宿主用两块画布轮流上前：正在显示的那块留着旧的，新内容先在另一块里排。排的过程中不能露内容，
+// 否则用户看到的是「还没排完的裸文档」；但也**不能**把整个 iframe 藏起来（display:none / visibility:hidden /
+// opacity:0 / 被别的东西完全盖住）：浏览器会把这些看不见的 iframe 的 requestAnimationFrame 限流到 1 帧/秒，
+// 而 Paged.js 每排一页都要等一帧——18 页的文档在预览里能拖到 15 秒，正常只要 0.3 秒。
+// 这里只藏文档内容：元素本身仍算可见，就不触发限流。背景也要一起清掉——只要这个文档还被判成
+// 「不透明」，浏览器就会把下面那块正在显示的画布当成被完全遮住，把它的绘制一起丢掉，用户就看到灰底闪一下。
+var embedded = window.parent !== window;
+function conceal() {
+  document.documentElement.style.visibility = 'hidden';
+  document.documentElement.style.background = 'transparent';
+  // 滚动条要单独处理：它是原生滚动条，画在图层上，visibility: hidden 管不着它。分页途中文档高度
+  // 忽长忽短，滚动条拇指就会在预览右边一涨一缩（用户看到的就是「滚动条跳一下」）。这里只把它涂成
+  // 全透明：**占位不变**（不做 scrollbar-width: none），换回可见时版面宽度不会跟着动。
+  document.documentElement.style.scrollbarColor = 'transparent transparent';
+  if (document.body) document.body.style.background = 'transparent';
+}
+function reveal() {
+  document.documentElement.style.visibility = '';
+  document.documentElement.style.background = '';
+  document.documentElement.style.scrollbarColor = '';
+  if (document.body) document.body.style.background = '';
+}
+if (embedded) {
+  conceal();
+  document.addEventListener('DOMContentLoaded', conceal);
+}
+// 宿主可能在分页跑完之前就把进度发过来：那时页还没排出来，滚不动。先记下最后一次要求的位置，
+// 分页结束、页面有高度之后再补上——新预览一露面就已经在原来的地方，不会先回文首再跳回来。
+var desiredScroll = null;
+function applyScroll(ratio) {
+  var max = Math.max(0, document.documentElement.scrollHeight - window.innerHeight);
+  applyingScroll = true;
+  window.scrollTo(0, Math.max(0, Math.min(1, ratio)) * max);
+  // 等两帧再放行上报：scroll 事件是异步派发的，过早清标记会把同步滚当成用户滚动。
+  requestAnimationFrame(function() { requestAnimationFrame(function() { applyingScroll = false; }); });
+}
 function report(status, pages) {
   window.__stylemdPaged = { status: status, pages: pages };
   if (window.parent !== window) window.parent.postMessage({ type: 'stylemd:pagination', id: ${id}, status: status, pages: pages }, '*');
@@ -76,11 +112,8 @@ window.addEventListener('message', function(event) {
   if (event.data.type === 'stylemd:print' && window.__stylemdPaged.status === 'paged') window.print();
   // 编辑器滚动时跟着走：按比例定位，源文与分页后的页面对不上行，只能对进度。
   if (event.data.type === 'stylemd:scroll' && typeof event.data.ratio === 'number') {
-    var max = Math.max(0, document.documentElement.scrollHeight - window.innerHeight);
-    applyingScroll = true;
-    window.scrollTo(0, Math.max(0, Math.min(1, event.data.ratio)) * max);
-    // 等两帧再放行上报：scroll 事件是异步派发的，过早清标记会把同步滚当成用户滚动。
-    requestAnimationFrame(function() { requestAnimationFrame(function() { applyingScroll = false; }); });
+    desiredScroll = Math.max(0, Math.min(1, event.data.ratio));
+    applyScroll(desiredScroll);
   }
   if (event.data.type === 'stylemd:zoom' && typeof event.data.zoom === 'number') {
     window.__stylemdZoom = Math.min(2, Math.max(0.4, event.data.zoom));
@@ -320,8 +353,15 @@ window.addEventListener('load', async function() {
     addStyle(${screenCss});
     if (toolbar) addStyle(${toolbarCss});
     applyZoom();
+    if (desiredScroll !== null) applyScroll(desiredScroll);
+    reveal();
+    // 等两帧再上报：宿主收到上报就会把旧的那块画布藏起来，而这一版内容刚露面，还不能保证已经画完
+    // （长文档首帧要光栅化一阵）。这两块画布一藏一亮是同一次切换，先把这一版画出来，切换才不会闪出空白。
+    await new Promise(function (resolve) { requestAnimationFrame(function () { requestAnimationFrame(resolve); }); });
     report('paged', flow.total);
   } catch (error) {
+    // 分页失败也要露出来，别把预览停在灰底上。
+    reveal();
     report('error', 0);
   } finally {
     if (toolbar) document.body.appendChild(toolbar);

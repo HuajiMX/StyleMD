@@ -569,8 +569,24 @@ body.is-dragging-pane .preview-iframe { pointer-events: none; }
 .badge { flex: 0 0 auto; font-size: 11px; padding: 1px 7px; border-radius: 999px; white-space: nowrap; }
 .badge.ok { background: #eef7f1; color: var(--ok); }
 .badge.warn { background: #fdf8ea; color: var(--warn); }
-.preview-frame { flex: 1 1 auto; min-height: 0; overflow: auto; background: #e6e9ee; }
-.preview-iframe { width: 100%; height: 100%; border: 0; display: block; }
+/*
+ * 两层画布叠在同一块地方，三种身份：
+ *   .preview-iframe          正在显示的那块（留着旧渲染，用户看着它）
+ *   .preview-iframe-incoming 正在分页的那块，压在最上面（它自己的内容在分页期间是藏着的）
+ *   .preview-iframe-spare    备用那块，干脆不画
+ * 分页那块必须压在最上面：浏览器会把「被完全遮住 / 不可见」的 iframe 的 requestAnimationFrame
+ * 限流到 1 帧/秒，而 Paged.js 每排一页都要等一帧，分页会被拖慢几十倍。
+ */
+.preview-frame { position: relative; flex: 1 1 auto; min-height: 0; overflow: hidden; background: #e6e9ee; }
+.preview-iframe, .preview-iframe-incoming, .preview-iframe-spare {
+  position: absolute; inset: 0; width: 100%; height: 100%;
+  border: 0; display: block; background: transparent;
+}
+.preview-iframe { z-index: 1; }
+/* 正在分页那块压在显示那块上面，但它永远不接指针：它挡着的鼠标事件得落到正在显示的那块上，
+   否则滚轮、悬停、拖动分隔条都会打到一个（用户看不见的）文档里去。 */
+.preview-iframe-incoming { z-index: 5; pointer-events: none; }
+.preview-iframe-spare { z-index: 5; visibility: hidden; pointer-events: none; }
 
 /* ---------- 样式配置窗口 ---------- */
 /* 透明挡板：不压暗底色，但吃掉所有点击，弹窗打开时动不了下面的正文。 */

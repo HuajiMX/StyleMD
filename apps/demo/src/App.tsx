@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { useCallback, useEffect, useMemo, useRef, useState, type RefObject } from 'react'
 import { build, collectRoleSpans, roleAtOffset, type BuildResult } from '@stylemd/core'
 import { BUILT_IN_THEMES, getBuiltInTheme } from '@stylemd/presets'
 import { PREVIEW_CHROME_CSS, injectHeadStyle, injectPagedPolyfill } from '@stylemd/renderer-paged'
@@ -13,7 +13,7 @@ import {
 import pagedPolyfill from '@pagedjs-polyfill?raw'
 import sampleMarkdown from '../../../examples/sample-thesis.md?raw'
 import { OutlinePanel } from './components/OutlinePanel'
-import { PreviewPane } from './components/PreviewPane'
+import { PreviewPane, type PreviewFrame, type PreviewSlot } from './components/PreviewPane'
 import { EditorSchemeDialog } from './components/EditorSchemeDialog'
 import { FurnitureDialog } from './components/FurnitureDialog'
 import { Ribbon, type RibbonTab } from './components/Ribbon'
@@ -112,11 +112,27 @@ export function App() {
    * 只能靠预览 postMessage 通报；用计数而不是布尔，是因为「已经在预览里」之后再进去不会产生状态变化。
    */
   const [previewHoverTick, setPreviewHoverTick] = useState(0)
-  const iframeRef = useRef<HTMLIFrameElement>(null)
+  /**
+   * 预览的两块画布。正在显示的那块不动，新一版先在另一块里分页（它压在最上面、内容藏着），
+   * 排完再换过来：打字时就不会先看到旧内容被清空（闪一下），换上来时也已经恢复好进度（不跳回文首）。
+   */
+  const frameARef = useRef<HTMLIFrameElement>(null)
+  const frameBRef = useRef<HTMLIFrameElement>(null)
+  const frameRefs = useMemo<Record<PreviewSlot, RefObject<HTMLIFrameElement>>>(
+    () => ({ a: frameARef, b: frameBRef }),
+    [],
+  )
+  const [activeSlot, setActiveSlot] = useState<PreviewSlot>('a')
+  const activeSlotRef = useRef<PreviewSlot>('a')
   const editorRef = useRef<SourceEditorHandle | null>(null)
   /** 从文件打开 / 另存为拿到的句柄：「保存」写回它，没有就当「另存为」处理。 */
   const fileHandleRef = useRef<FileHandle | null>(null)
   const scrollRatioRef = useRef(0)
+  /** iframe 的 onLoad 回调要拿最新缩放，但它不在 state 的渲染闭包里，用 ref 兜住。 */
+  const zoomRef = useRef(zoom)
+  useEffect(() => {
+    zoomRef.current = zoom
+  }, [zoom])
   const outlineTimerRef = useRef<number | null>(null)
   /** 正在把预览的滚动同步回编辑器；这期间的编辑器 scroll 事件不再回发给预览，免得两边互相推。 */
   const syncingFromPreviewRef = useRef(false)
@@ -182,27 +198,94 @@ export function App() {
     return injectPagedPolyfill(injectHeadStyle(html, PREVIEW_CHROME_CSS), pagedPolyfill, previewId)
   }, [result.html, previewId])
 
+  // 两块画布各自装着哪一版：a 先显示第一版，之后每一版都排进另一块，排完再换过来。
+  const [frames, setFrames] = useState<Record<PreviewSlot, PreviewFrame>>(() => ({
+    a: { id: '', html: '' },
+    b: { id: '', html: '' },
+  }))
+  /**
+   * 正在分页的那块画布。它得压在显示那块上面才不被浏览器限流，可新文档还没接手之前那块的位置上
+   * 还挂着更早的一版内容，先抬上去会闪一下旧版；所以等新文档 load 完（那时它自己已经把内容藏好了）
+   * 再抬。
+   */
+  const [incomingSlot, setIncomingSlot] = useState<PreviewSlot | null>(null)
+  const framesRef = useRef(frames)
+  useEffect(() => {
+    framesRef.current = frames
+  }, [frames])
+  useEffect(() => {
+    setFrames((previous) => {
+      if (previous.a.id === previewId || previous.b.id === previewId) return previous
+      const next: PreviewFrame = { id: previewId, html: previewHtml }
+      // 一块都还没装过时（首屏）先填正在显示那块；之后才排进另一块。
+      const active = activeSlotRef.current
+      const target: PreviewSlot = previous[active].id ? (active === 'a' ? 'b' : 'a') : active
+      return target === 'a' ? { ...previous, a: next } : { ...previous, b: next }
+    })
+    setIncomingSlot(null)
+  }, [previewId, previewHtml])
+
+  /** 把消息同时发给两块画布（各自带自己的 id）：待换的那块也要跟上缩放与进度，换上来才是一致的。 */
+  const sendToFrames = useCallback((type: string, payload: Record<string, unknown>) => {
+    for (const slot of ['a', 'b'] as const) {
+      const spec = framesRef.current[slot]
+      const target = frameRefs[slot].current?.contentWindow
+      if (!spec.id || !target) continue
+      target.postMessage({ type, id: spec.id, ...payload }, '*')
+    }
+  }, [frameRefs])
+
+  /**
+   * 画布一挂上就把缩放与「当前进度」告诉它。这时分页多半还没跑完，预览脚本会先把它们记下，
+   * 等页面排好再应用——新预览露面的那一刻就已经在原来的位置，不会有跳回文首的动作。
+   */
+  const handleFrameLoad = useCallback((slot: PreviewSlot) => {
+    const spec = framesRef.current[slot]
+    const target = frameRefs[slot].current?.contentWindow
+    if (!spec.id || !target) return
+    // 新文档已经加载完（内容在分页期间由文档自己藏着），可以把它抬成"正在分页"那块了。
+    // 只抬当前这一版：备用画布在预览重新挂载（比如切回双栏）时也会重新加载，抬错了它会把更早一版
+    // 的内容重新露到最上面。
+    if (spec.id === previewId && slot !== activeSlotRef.current) setIncomingSlot(slot)
+    target.postMessage({ type: 'stylemd:zoom', id: spec.id, zoom: zoomRef.current }, '*')
+    target.postMessage({ type: 'stylemd:scroll', id: spec.id, ratio: scrollRatioRef.current }, '*')
+  }, [frameRefs, previewId])
+
   useEffect(() => {
     setPagedStatus('pending')
     setPageCount(null)
     const timer = window.setTimeout(() => setPagedStatus('error'), 60000)
+    const slotOf = (source: MessageEventSource | null): PreviewSlot | null => {
+      if (source === frameARef.current?.contentWindow) return 'a'
+      if (source === frameBRef.current?.contentWindow) return 'b'
+      return null
+    }
     const receive = (event: MessageEvent) => {
       const data = event.data
-      if (event.source !== iframeRef.current?.contentWindow || data?.type !== 'stylemd:pagination' || data.id !== previewId) return
+      if (data?.type !== 'stylemd:pagination' || data.id !== previewId) return
+      const slot = slotOf(event.source)
+      if (!slot) return
       if (data.status !== 'paged' && data.status !== 'error') return
       window.clearTimeout(timer)
       setPageCount(Number.isInteger(data.pages) && data.pages > 0 ? data.pages : 0)
       setPagedStatus(data.status)
+      // 排好的是另一块：只换身份（层级/可见性），两块 iframe 都不重新加载，所以看不到闪白。
+      if (slot !== activeSlotRef.current) {
+        activeSlotRef.current = slot
+        setActiveSlot(slot)
+        setIncomingSlot(null)
+      }
       setReadyId(previewId)
     }
     const receiveScroll = (event: MessageEvent) => {
       const data = event.data
-      if (event.source !== iframeRef.current?.contentWindow || data?.type !== 'stylemd:scroll-report' || data.id !== previewId) return
+      // 只认正在显示的那块：待换的那块是被程序滚过去的，不能反过来推编辑器。
+      if (data?.type !== 'stylemd:scroll-report' || slotOf(event.source) !== activeSlotRef.current) return
       if (typeof data.ratio === 'number') applyPreviewScroll(data.ratio)
     }
     const receivePointer = (event: MessageEvent) => {
       const data = event.data
-      if (event.source !== iframeRef.current?.contentWindow || data?.type !== 'stylemd:pointer') return
+      if (data?.type !== 'stylemd:pointer' || !slotOf(event.source)) return
       if (data.over) setPreviewHoverTick((tick) => tick + 1)
     }
     window.addEventListener('message', receive)
@@ -217,8 +300,20 @@ export function App() {
   }, [applyPreviewScroll, previewId])
 
   useEffect(() => {
-    iframeRef.current?.contentWindow?.postMessage({ type: 'stylemd:zoom', id: previewId, zoom }, '*')
-  }, [zoom, readyId, previewId])
+    sendToFrames('stylemd:zoom', { zoom })
+  }, [zoom, readyId, previewId, sendToFrames])
+
+  /**
+   * 换上新画布后再补发一次进度兜底。正常路径上待换那块分页结束前就收到了进度、换上来时已经停好；
+   * 万一那条消息没赶上（预览脚本还没开始听），这里补一次，同样的值再滚一次也不会跳。
+   */
+  useEffect(() => {
+    if (!readyId || readyId !== previewId) return
+    frameRefs[activeSlotRef.current].current?.contentWindow?.postMessage(
+      { type: 'stylemd:scroll', id: readyId, ratio: scrollRatioRef.current },
+      '*',
+    )
+  }, [readyId, previewId, frameRefs])
 
   const handleRoleChange = useCallback((role: string, patch: Partial<RoleStyle>) => {
     changeTheme((current) => upsertRoleStyle(current, role, patch))
@@ -256,8 +351,12 @@ export function App() {
   }, [theme])
 
   const handlePrint = useCallback(() => {
-    iframeRef.current?.contentWindow?.postMessage({ type: 'stylemd:print', id: previewId }, '*')
-  }, [previewId])
+    const spec = framesRef.current[activeSlotRef.current]
+    frameRefs[activeSlotRef.current].current?.contentWindow?.postMessage(
+      { type: 'stylemd:print', id: spec.id },
+      '*',
+    )
+  }, [frameRefs])
 
   const openDialog = useCallback((role: string) => setDialogRole(role), [])
 
@@ -296,23 +395,15 @@ export function App() {
     scheduleActiveOutline()
     if (syncingFromPreviewRef.current) return
     scrollRatioRef.current = ratio
-    iframeRef.current?.contentWindow?.postMessage({ type: 'stylemd:scroll', id: previewId, ratio }, '*')
-  }, [previewId, scheduleActiveOutline])
+    // 待换那块也要收到：它可能正排着下一版，记下进度才能在换上来时停在同一处。
+    sendToFrames('stylemd:scroll', { ratio })
+  }, [scheduleActiveOutline, sendToFrames])
 
   // 正文、编辑器宽度或展示模式一变，标题的位置就变了，重新算一遍高亮。
   useEffect(() => {
     const frame = window.requestAnimationFrame(updateActiveOutline)
     return () => window.cancelAnimationFrame(frame)
   }, [updateActiveOutline, editorWidth, viewMode, navOpen])
-
-  // 分页完成后把当前滚动进度补发给预览：恢复会话时预览刚建好，早先那条消息没人接。
-  useEffect(() => {
-    if (!readyId || readyId !== previewId) return
-    iframeRef.current?.contentWindow?.postMessage(
-      { type: 'stylemd:scroll', id: previewId, ratio: scrollRatioRef.current },
-      '*',
-    )
-  }, [readyId, previewId])
 
   // 会话存档：改动停下 400ms 再写，避免每敲一个字都写一次 localStorage。
   useEffect(() => {
@@ -505,7 +596,15 @@ export function App() {
           />
         ) : null}
 
-        {viewMode !== 'edit' ? <PreviewPane html={previewHtml} iframeRef={iframeRef} /> : null}
+        {viewMode !== 'edit' ? (
+          <PreviewPane
+            frames={frames}
+            activeSlot={activeSlot}
+            incomingSlot={incomingSlot}
+            frameRefs={frameRefs}
+            onFrameLoad={handleFrameLoad}
+          />
+        ) : null}
       </main>
 
       <StatusBar
