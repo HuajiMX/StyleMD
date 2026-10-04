@@ -877,6 +877,83 @@ async function main() {
     })
     await page.screenshot({ path: path.join(artifactDir, 'demo-smoke.png'), fullPage: false })
 
+    // 8e. 「文件」菜单的展开规则：悬停即开、移开即收、点击钉住；外加「自动保存」开关
+    const fileTab = page.getByRole('button', { name: '文件' })
+    const fileTabBox = await fileTab.boundingBox()
+    const tabCenter = { x: fileTabBox.x + fileTabBox.width / 2, y: fileTabBox.y + fileTabBox.height / 2 }
+    const awayInHost = { x: 300, y: 520 }
+    const filePreviewBox = await page.locator('.preview-iframe').boundingBox()
+    const filePreviewCenter = { x: filePreviewBox.x + filePreviewBox.width / 2, y: filePreviewBox.y + filePreviewBox.height / 2 }
+
+    await page.mouse.move(tabCenter.x, tabCenter.y)
+    await page.waitForSelector('.file-panel', { timeout: 3000 })
+    await page.mouse.move(awayInHost.x, awayInHost.y)
+    await page.waitForTimeout(400)
+    const hoverOpenedAndClosed = (await page.locator('.file-panel').count()) === 0
+    check('悬停「文件」即展开，移开即收起', hoverOpenedAndClosed, '悬停展开 → 移到编辑器上方收起')
+
+    // 指针移进预览 iframe 后父文档收不到任何鼠标事件，靠预览 postMessage 通报位置
+    await page.mouse.move(tabCenter.x, tabCenter.y)
+    await page.waitForSelector('.file-panel', { timeout: 3000 })
+    await page.mouse.move(filePreviewCenter.x, filePreviewCenter.y)
+    await page.waitForTimeout(400)
+    const closedOnPreview = (await page.locator('.file-panel').count()) === 0
+    check('指针移进预览 iframe 也会收起', closedOnPreview, '预览通报 stylemd:pointer')
+
+    await fileTab.click()
+    await page.waitForSelector('.file-panel', { timeout: 3000 })
+    await page.mouse.move(awayInHost.x, awayInHost.y)
+    await page.waitForTimeout(400)
+    const pinnedStaysOpen = (await page.locator('.file-panel').count()) === 1
+    await page.mouse.click(awayInHost.x, awayInHost.y)
+    await page.waitForTimeout(250)
+    const outsideClosed = (await page.locator('.file-panel').count()) === 0
+    check(
+      '点击「文件」后长期展开，点别处才收起',
+      pinnedStaysOpen && outsideClosed,
+      `移开仍展开=${pinnedStaysOpen}，点空白收起=${outsideClosed}`,
+    )
+
+    const underline = await page.locator('.file-tab').evaluate((node) => getComputedStyle(node).borderBottomColor)
+    check('「文件」选项卡不再画选中下边线', underline === 'rgba(0, 0, 0, 0)', underline)
+
+    await fileTab.click()
+    await page.waitForSelector('.file-panel', { timeout: 3000 })
+    const autoSaveBox = page.getByRole('checkbox', { name: '自动保存' })
+    const autoSaveDefault = await autoSaveBox.isChecked()
+    const autoSaveMarker = '关闭自动保存标记'
+    const savedLabel = async () =>
+      (await page.locator('.statusbar').innerText()).match(/已(?:自动)?保存 \d{2}:\d{2}/)?.[0] ?? ''
+    const savedLabelBefore = await savedLabel()
+    await autoSaveBox.uncheck()
+    await page.keyboard.press('Escape')
+    await page.locator('.source-pane .cm-content').click()
+    await page.keyboard.press('End')
+    await page.keyboard.type(autoSaveMarker)
+    await page.waitForTimeout(800)
+    const storedWhileOff = await page.evaluate(() => window.localStorage.getItem('stylemd:session:v1') ?? '')
+    const savedLabelAfter = await savedLabel()
+    check(
+      '关掉自动保存后不再写会话存档，状态栏停在最后一次保存时间',
+      autoSaveDefault && !storedWhileOff.includes(autoSaveMarker) && savedLabelBefore !== '' && savedLabelAfter === savedLabelBefore,
+      `默认勾选=${autoSaveDefault}，状态栏「${savedLabelAfter}」不再前进`,
+    )
+
+    await fileTab.click()
+    await page.waitForSelector('.file-panel', { timeout: 3000 })
+    await page.getByRole('checkbox', { name: '自动保存' }).check()
+    await page.keyboard.press('Escape')
+    const writtenBack = await until(
+      async () =>
+        (await page.evaluate(() => window.localStorage.getItem('stylemd:session:v1') ?? '')).includes(autoSaveMarker),
+      { label: '重新勾选自动保存后写回会话' },
+    )
+    check(
+      '重新勾选自动保存后恢复写入',
+      writtenBack && /已自动保存 \d{2}:\d{2}/.test(await page.locator('.statusbar').innerText()),
+      '会话写回 + 状态栏显示「已自动保存 + 时间」',
+    )
+
     // 9. 文件菜单：重命名、新建、载入示例
     await page.getByRole('button', { name: '文件' }).click()
     await page.waitForSelector('.file-panel', { timeout: 5000 })
@@ -898,12 +975,66 @@ async function main() {
     const frontmatterRenamed = (await editorValue(page)).includes('title: 重命名后的文档')
     check('文件菜单可以重命名文档', frontmatterRenamed, `标题栏：${renamed}`)
 
+    // 等这一次重命名触发的自动存档落定，再手动保存，否则可能被自动存档覆盖掉「已保存」的措辞
+    await page.waitForTimeout(600)
+    // 没有 File System Access API 的浏览器（Firefox / Safari）里「保存」退回下载，先关掉能力验证兜底路径
+    await page.evaluate(() =>
+      Object.defineProperty(window, 'showSaveFilePicker', { value: undefined, writable: true, configurable: true }),
+    )
     await page.getByRole('button', { name: '文件' }).click()
     await page.waitForSelector('.file-panel', { timeout: 5000 })
     const download = page.waitForEvent('download', { timeout: 5000 })
     await page.getByRole('menuitem', { name: '保存', exact: true }).click()
     const saved = await download
-    check('文件菜单可以保存为 .md', saved.suggestedFilename().endsWith('.md'), saved.suggestedFilename())
+    check('没有文件写入能力时「保存」退回下载 .md', saved.suggestedFilename().endsWith('.md'), saved.suggestedFilename())
+    const manualLabel = ((await page.locator('.statusbar').innerText()).match(/已(?:自动)?保存 \d{2}:\d{2}/) ?? [''])[0]
+    check('手动保存后状态栏显示「已保存 + 时间」', manualLabel.startsWith('已保存'), manualLabel || '没有保存时间')
+
+    // 有 File System Access API 时「保存」要写回文件：用假句柄接住写入，避免弹真正的系统对话框
+    await page.evaluate(() => {
+      window.__fileSaves = { picked: 0, writes: [] }
+      window.showSaveFilePicker = async (options) => {
+        window.__fileSaves.picked += 1
+        return {
+          name: options?.suggestedName ?? 'untitled.md',
+          async createWritable() {
+            return {
+              async write(text) {
+                window.__fileSaves.writes.push(text)
+              },
+              async close() {},
+            }
+          },
+        }
+      }
+    })
+    await page.getByRole('button', { name: '文件' }).click()
+    await page.waitForSelector('.file-panel', { timeout: 5000 })
+    await page.getByRole('menuitem', { name: '保存', exact: true }).click()
+    const firstWrite = await until(
+      async () => {
+        const state = await page.evaluate(() => window.__fileSaves)
+        return state.writes.length === 1 ? state : null
+      },
+      { label: '「保存」写回文件' },
+    )
+    const textAtSave = await editorValue(page)
+    check(
+      '「保存」写回文件而不是下载',
+      firstWrite.writes[0] === textAtSave && firstWrite.picked === 1,
+      `弹出选择框 ${firstWrite.picked} 次，写入 ${firstWrite.writes[0].length} 字符`,
+    )
+    await page.getByRole('button', { name: '文件' }).click()
+    await page.waitForSelector('.file-panel', { timeout: 5000 })
+    await page.getByRole('menuitem', { name: '保存', exact: true }).click()
+    const secondWrite = await until(
+      async () => {
+        const state = await page.evaluate(() => window.__fileSaves)
+        return state.writes.length === 2 ? state : null
+      },
+      { label: '再次「保存」直接写回原文件' },
+    )
+    check('已有文件句柄时不再弹选择框', secondWrite.picked === 1, `选择框只弹过 ${secondWrite.picked} 次`)
 
     await page.getByRole('button', { name: '文件' }).click()
     await page.waitForSelector('.file-panel', { timeout: 5000 })
@@ -922,12 +1053,17 @@ async function main() {
     })
 
     // 10. 会话记忆：改点内容 + 落个光标，刷新后原样恢复
-    await page.locator('.nav-item').nth(1).click()
-    await page.keyboard.press('End')
+    //     光标直接放进二级标题文字里：大纲是防抖算出来的，刚换过文档时偏移可能还是上一份的。
+    const headingText = await editorValue(page)
+    await setCaret(page, headingText.indexOf('## 研究背景') + '## 研究背景'.length)
     await page.keyboard.type(' 会话标记')
     const beforeReload = { value: await editorValue(page), caret: await editorCaret(page) }
     await page.waitForTimeout(700)
-    check('底部栏显示已保存时间', /已保存 \d{2}:\d{2}/.test(await page.locator('.statusbar').innerText()), '写入 localStorage')
+    check(
+      '底部栏显示已自动保存时间',
+      /已自动保存 \d{2}:\d{2}/.test(await page.locator('.statusbar').innerText()),
+      '写入 localStorage',
+    )
 
     await page.reload({ waitUntil: 'load' })
     const restored = await until(

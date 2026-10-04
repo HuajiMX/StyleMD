@@ -98,6 +98,22 @@ window.addEventListener('scroll', function() {
 if (window.parent !== window) document.addEventListener('click', function(event) {
   if (event.target.closest && event.target.closest('a')) event.preventDefault();
 });
+// 指针停在预览上时，父文档既收不到鼠标事件、:hover 也停在原处，宿主的悬停面板（例如「文件」菜单）
+// 就没法自己判断指针已经离开。这里替它通报一声。
+// 只能当「事件」用：父文档冻结 hover 的同时，子文档也收不到 mouseleave，所以进出的电平不可靠，
+// 改成在预览里移动指针就按节流重复通报，宿主每收到一次就把悬停面板收起来。
+var lastPointerReport = 0;
+function reportPointer(over) {
+  if (window.parent !== window) window.parent.postMessage({ type: 'stylemd:pointer', id: ${id}, over: over }, '*');
+}
+document.documentElement.addEventListener('mouseenter', function() { reportPointer(true); });
+document.documentElement.addEventListener('mouseleave', function() { reportPointer(false); });
+document.documentElement.addEventListener('pointermove', function() {
+  var now = Date.now();
+  if (now - lastPointerReport < 300) return;
+  lastPointerReport = now;
+  reportPointer(true);
+});
 // 跨页表格：Paged.js 把一张表按页切成多个独立 <table>，每片只按自己那部分内容算列宽，跨页就对不齐。
 // 注意不能等分页完再统一列宽：那会把行重新排高、把内容挤出页面（实测连表格下框线都会跟着跑出页外）。
 // 必须在分页之前按页面内容宽度把列宽定死，让 Paged.js 从一开始就按最终几何分页。

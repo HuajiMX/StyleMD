@@ -20,10 +20,19 @@ import { Ribbon, type RibbonTab } from './components/Ribbon'
 import { SourcePane } from './components/SourcePane'
 import { StatusBar, type ViewMode } from './components/StatusBar'
 import { StyleDialog } from './components/StyleDialog'
-import { blankDocument, documentTitle, downloadText, markdownFileName, withDocumentTitle } from './lib/document'
+import {
+  blankDocument,
+  documentTitle,
+  markdownFileName,
+  saveMarkdownAs,
+  withDocumentTitle,
+  writeToHandle,
+  type FileHandle,
+  type OpenedFile,
+} from './lib/document'
 import { startWidthDrag } from './lib/dragResize'
 import { documentOutline, type OutlineItem } from './lib/outline'
-import { formatSavedAt, loadSession, saveSession } from './lib/session'
+import { formatSavedAt, loadAutoSave, loadSession, saveAutoSave, saveSession } from './lib/session'
 import type { SourceEditorHandle } from './lib/editor/types'
 import { activeScheme, applyScheme, loadSchemeLibrary, saveSchemeLibrary } from './lib/editor/scheme'
 import { SCHEME_RIBBON_LIMIT, markSchemeUsed, orderSchemesByRecent, type EditorSchemeLibrary } from '@stylemd/editor-theme'
@@ -91,9 +100,20 @@ export function App() {
   const [navOpen, setNavOpen] = useState(() => session?.navOpen ?? true)
   const [navWidth, setNavWidth] = useState(() => session?.navWidth ?? 220)
   const [editorWidth, setEditorWidth] = useState(() => session?.editorWidth ?? 420)
-  const [savedAt, setSavedAt] = useState<number | null>(null)
+  /** 最后一次保存：时间 + 是自动写会话还是手动存文件，状态栏据此显示不同措辞。 */
+  const [saved, setSaved] = useState<{ at: number; kind: 'auto' | 'manual' } | null>(
+    session ? { at: session.savedAt, kind: 'auto' } : null,
+  )
+  const [autoSave, setAutoSave] = useState(() => loadAutoSave())
+  /**
+   * 预览里指针移动的次数。父文档看不出指针是不是移到了预览 iframe 上（事件与 :hover 都会冻结），
+   * 只能靠预览 postMessage 通报；用计数而不是布尔，是因为「已经在预览里」之后再进去不会产生状态变化。
+   */
+  const [previewHoverTick, setPreviewHoverTick] = useState(0)
   const iframeRef = useRef<HTMLIFrameElement>(null)
   const editorRef = useRef<SourceEditorHandle | null>(null)
+  /** 从文件打开 / 另存为拿到的句柄：「保存」写回它，没有就当「另存为」处理。 */
+  const fileHandleRef = useRef<FileHandle | null>(null)
   const scrollRatioRef = useRef(0)
   const outlineTimerRef = useRef<number | null>(null)
   /** 正在把预览的滚动同步回编辑器；这期间的编辑器 scroll 事件不再回发给预览，免得两边互相推。 */
@@ -178,12 +198,19 @@ export function App() {
       if (event.source !== iframeRef.current?.contentWindow || data?.type !== 'stylemd:scroll-report' || data.id !== previewId) return
       if (typeof data.ratio === 'number') applyPreviewScroll(data.ratio)
     }
+    const receivePointer = (event: MessageEvent) => {
+      const data = event.data
+      if (event.source !== iframeRef.current?.contentWindow || data?.type !== 'stylemd:pointer') return
+      if (data.over) setPreviewHoverTick((tick) => tick + 1)
+    }
     window.addEventListener('message', receive)
     window.addEventListener('message', receiveScroll)
+    window.addEventListener('message', receivePointer)
     return () => {
       window.clearTimeout(timer)
       window.removeEventListener('message', receive)
       window.removeEventListener('message', receiveScroll)
+      window.removeEventListener('message', receivePointer)
     }
   }, [applyPreviewScroll, previewId])
 
@@ -287,6 +314,7 @@ export function App() {
 
   // 会话存档：改动停下 400ms 再写，避免每敲一个字都写一次 localStorage。
   useEffect(() => {
+    if (!autoSave) return
     const timer = window.setTimeout(() => {
       const savedAtValue = Date.now()
       saveSession({
@@ -300,10 +328,15 @@ export function App() {
         zoom,
         savedAt: savedAtValue,
       })
-      setSavedAt(savedAtValue)
+      setSaved({ at: savedAtValue, kind: 'auto' })
     }, 400)
     return () => window.clearTimeout(timer)
-  }, [markdown, cursorOffset, theme, viewMode, navOpen, navWidth, editorWidth, zoom])
+  }, [autoSave, markdown, cursorOffset, theme, viewMode, navOpen, navWidth, editorWidth, zoom])
+
+  const handleAutoSaveChange = useCallback((enabled: boolean) => {
+    setAutoSave(enabled)
+    saveAutoSave(enabled)
+  }, [])
 
   const jumpToOutline = useCallback((item: OutlineItem) => {
     const editor = editorRef.current
@@ -316,11 +349,37 @@ export function App() {
 
   const handleNewDocument = useCallback(() => setMarkdown(blankDocument()), [])
   const handleLoadSample = useCallback(() => setMarkdown(sampleMarkdown), [])
-  const handleSaveDocument = useCallback(() => downloadText(markdownFileName(documentName), markdown), [documentName, markdown])
+  const handleOpenFile = useCallback((file: OpenedFile) => {
+    fileHandleRef.current = file.handle
+    setMarkdown(file.text)
+  }, [])
   const handleSaveDocumentAs = useCallback(
-    (name: string) => downloadText(markdownFileName(name), markdown),
+    async (name: string) => {
+      try {
+        const result = await saveMarkdownAs(markdown, markdownFileName(name))
+        if (result.outcome === 'cancelled') return
+        if (result.handle) fileHandleRef.current = result.handle
+        setSaved({ at: Date.now(), kind: 'manual' })
+      } catch (error) {
+        window.alert(`保存失败：${error instanceof Error ? error.message : String(error)}`)
+      }
+    },
     [markdown],
   )
+  /** 保存 = 写回打开的文件；还没有文件句柄（新建 / 载入示例）就按另存为处理。 */
+  const handleSaveDocument = useCallback(async () => {
+    const handle = fileHandleRef.current
+    if (!handle) {
+      await handleSaveDocumentAs(documentName)
+      return
+    }
+    try {
+      await writeToHandle(handle, markdown)
+      setSaved({ at: Date.now(), kind: 'manual' })
+    } catch (error) {
+      window.alert(`保存失败：${error instanceof Error ? error.message : String(error)}`)
+    }
+  }, [documentName, handleSaveDocumentAs, markdown])
   const handleRenameDocument = useCallback(
     (name: string) => setMarkdown((current) => withDocumentTitle(current, name)),
     [],
@@ -363,12 +422,15 @@ export function App() {
         onPageChange={handlePageChange}
         onEditFurniture={handleEditFurniture}
         onDefaultsChange={handleDefaultsChange}
-        onLoadMarkdown={setMarkdown}
+        onOpenFile={handleOpenFile}
         onLoadSample={handleLoadSample}
         onNewDocument={handleNewDocument}
         onSaveDocument={handleSaveDocument}
         onSaveDocumentAs={handleSaveDocumentAs}
         onRenameDocument={handleRenameDocument}
+        autoSave={autoSave}
+        onAutoSaveChange={handleAutoSaveChange}
+        previewHoverTick={previewHoverTick}
         schemes={ribbonSchemes}
         activeSchemeId={currentScheme.id}
         hiddenSchemeCount={Math.max(0, schemeLibrary.schemes.length - ribbonSchemes.length)}
@@ -443,7 +505,7 @@ export function App() {
         pagedStatus={readyId === previewId ? pagedStatus : pagedStatus === 'error' ? 'error' : 'pending'}
         zoom={zoom}
         onZoomChange={setZoom}
-        savedAt={savedAt}
+        saved={saved}
       />
 
       {/* 页眉页脚弹窗排在样式窗口前面：从它点「样式」时，样式窗口要盖在它上面。 */}

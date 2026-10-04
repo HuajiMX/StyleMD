@@ -6,6 +6,11 @@
  * 校验交给调用方——坏档一律当作没有存档处理。
  */
 const STORAGE_KEY = 'stylemd:session:v1'
+/**
+ * 「自动保存」是用户偏好，必须和会话分开存：关掉之后会话本来就不会再写，
+ * 偏好要是塞在会话里，下次打开就会变回默认开启。
+ */
+const AUTOSAVE_KEY = 'stylemd:autosave:v1'
 
 export interface SessionSnapshot {
   markdown: string
@@ -56,6 +61,23 @@ export function clearSession(): void {
     window.localStorage.removeItem(STORAGE_KEY)
   } catch {
     // 同上。
+  }
+}
+
+/** 自动保存默认开启：这是工作台一直以来的行为，开关只是给用户一个退出选项。 */
+export function loadAutoSave(): boolean {
+  try {
+    return window.localStorage.getItem(AUTOSAVE_KEY) !== 'off'
+  } catch {
+    return true
+  }
+}
+
+export function saveAutoSave(enabled: boolean): void {
+  try {
+    window.localStorage.setItem(AUTOSAVE_KEY, enabled ? 'on' : 'off')
+  } catch {
+    // 写不进去不影响编辑，只是下次打开回到默认值。
   }
 }
 

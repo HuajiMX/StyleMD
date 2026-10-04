@@ -2,6 +2,7 @@ import type { ComputedStyles, RoleStyle, StyleTheme } from '@stylemd/theme-schem
 import type { EditorScheme } from '@stylemd/editor-theme'
 import { StyleGallery } from './StyleGallery'
 import { FileMenu } from './FileMenu'
+import type { OpenedFile } from '../lib/document'
 import {
   DefaultsGroup,
   EditGroup,
@@ -48,12 +49,16 @@ interface RibbonProps {
   onPageChange: (patch: Partial<StyleTheme['document']['page']>) => void
   onEditFurniture: (area: 'header' | 'footer') => void
   onDefaultsChange: (patch: Partial<StyleTheme['document']['defaults']>) => void
-  onLoadMarkdown: (text: string) => void
+  onOpenFile: (file: OpenedFile) => void
   onLoadSample: () => void
   onNewDocument: () => void
   onSaveDocument: () => void
   onSaveDocumentAs: (name: string) => void
   onRenameDocument: (name: string) => void
+  autoSave: boolean
+  onAutoSaveChange: (enabled: boolean) => void
+  /** 预览里指针移动的计数（父文档感知不到指针进了 iframe，由预览 postMessage 通报）。 */
+  previewHoverTick: number
   schemes: EditorScheme[]
   activeSchemeId: string
   hiddenSchemeCount: number
@@ -115,11 +120,14 @@ export function Ribbon(props: RibbonProps) {
         <FileMenu
           documentName={props.documentTitle}
           onNew={props.onNewDocument}
-          onOpen={props.onLoadMarkdown}
+          onOpenFile={props.onOpenFile}
           onLoadSample={props.onLoadSample}
           onSave={props.onSaveDocument}
           onSaveAs={props.onSaveDocumentAs}
           onRename={props.onRenameDocument}
+          autoSave={props.autoSave}
+          onAutoSaveChange={props.onAutoSaveChange}
+          previewHoverTick={props.previewHoverTick}
         />
         {TABS.map((tab) => (
           <button

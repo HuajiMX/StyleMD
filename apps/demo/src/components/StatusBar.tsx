@@ -16,8 +16,8 @@ interface StatusBarProps {
   pagedStatus: 'pending' | 'paged' | 'error'
   zoom: number
   onZoomChange: (zoom: number) => void
-  /** 会话存档的写入时间；null 表示还没写过。 */
-  savedAt: number | null
+  /** 最后一次保存：时间与方式（自动写会话 / 手动存文件）；null 表示还没保存过。 */
+  saved: { at: number; kind: 'auto' | 'manual' } | null
 }
 
 /**
@@ -56,7 +56,11 @@ export function StatusBar(props: StatusBarProps) {
       <span className={`status-item locator${props.cursorRole ? ' hit' : ''}`}>
         定位：{roleLabel(props.cursorRole ?? 'body.text')}
       </span>
-      {props.savedAt ? <span className="status-item status-saved">已保存 {formatSavedAt(props.savedAt)}</span> : null}
+      {props.saved ? (
+        <span className="status-item status-saved">
+          {props.saved.kind === 'auto' ? '已自动保存' : '已保存'} {formatSavedAt(props.saved.at)}
+        </span>
+      ) : null}
 
       <span className="status-spacer" />
 

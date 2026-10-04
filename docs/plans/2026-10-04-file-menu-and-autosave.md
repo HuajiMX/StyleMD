@@ -1,0 +1,68 @@
+# 「文件」菜单展开规则与自动保存开关
+
+日期：2026-10-04 ｜ 关联：AGENTS.md「工作台布局」、[数据存放位置笔记](2026-10-02-data-storage-notes.md)
+
+## 需求
+
+1. 「文件」选项卡**悬停即展开、移开即收起**；
+2. **点击后长期打开**，直到再点一次、点别处或按 Esc；
+3. 菜单里新增**「自动保存」复选框**，由用户决定是否自动保存；
+4. 去掉「文件」选项卡的选中下边线（悬停就展开，那条线只会跟着指针闪）。
+
+## 展开规则（`apps/demo/src/components/FileMenu.tsx`）
+
+- `open = pinned || hovered`：`pinned` 由点击切换，`hovered` 由指针位置驱动。
+- 悬停判定放在 **document 上的 `pointermove`**，不用 `onMouseEnter/onMouseLeave`：指针移进预览 iframe 之后，父文档既收不到鼠标事件、`:hover` 也停在原地（实测 `tab.matches(':hover')` 仍为 true），只靠 leave 事件菜单会一直挂着。
+- 从 iframe 回到选项卡时，浏览器可能因为冻结的 hover 状态不再补 `mouseenter`，所以打开也要靠 `pointermove` 兜底。
+- 收起留 140ms 缓冲：选项卡与面板之间有 2px 间隙，指针横穿时不该闪一下。
+- 打开「另存为 / 重命名」表单时自动钉住（表单非空时不再随悬停收起），否则鼠标一走就丢掉正在输入的名字。
+- Esc 关闭；点面板外关闭。
+
+### 预览 iframe 里的指针（`packages/renderer-paged`）
+
+父文档看不出指针是不是进了 iframe，只有预览自己知道。预览在 `documentElement` 上监听：
+
+- `mouseenter` / `pointermove`（**按 300ms 节流**）→ 向宿主 `postMessage({ type: 'stylemd:pointer', over: true })`；
+- `mouseleave` → `over: false`。
+
+必须是「事件」而不是「电平」：父文档冻结 hover 的同时，子文档也收不到 `mouseleave`，进出状态会卡住。
+宿主（`App.tsx`）把每次 `over: true` 记成一个自增计数 `previewHoverTick`，`FileMenu` 每收到一次就把悬停态收起来
+（钉住的不受影响）——用计数是因为「已经在预览里」之后再进去不会产生布尔状态变化。
+
+## 自动保存开关
+
+- 偏好单独存 `localStorage` 的 `stylemd:autosave:v1`（`on` / `off`，默认 `on`）。不能塞进会话存档：关掉之后会话本来就不再写，下次打开会变回默认开启。
+- `App.tsx` 的会话写入 effect 在 `autoSave === false` 时直接不排定时器；重新勾选后 effect 重跑，400ms 内补写一次。
+- 状态栏（`StatusBar.tsx`）只显示**最后一次保存**：自动写会话显示「已自动保存 HH:MM」，手动存文件（保存 / 另存为）显示「已保存 HH:MM」。
+  关掉自动保存后不额外提示，时间就停在最后一次保存上（不再前进），比原来那句「自动保存已关闭」更少打扰、也不丢信息。
+  刷新时用会话里的 `savedAt` 先兜上，不会出现一段空白。
+
+## 「保存」写回文件（不再是下载）
+
+原先的「保存」是 `<a download>`：浏览器默认没有写入磁盘的权限，这只能另存一份副本，不叫保存。
+
+现在 `apps/demo/src/lib/document.ts` 分成两条路：
+
+1. **File System Access API（Chromium）**：`showOpenFilePicker` / `showSaveFilePicker` 拿到 `FileSystemFileHandle`，
+   **保存**写回同一个文件（`createWritable` → `write` → `close`），**另存为**弹系统对话框换文件——两者才真正是两件事；
+   打开文件后句柄留在 `App` 的 `fileHandleRef` 里，后续「保存」不再问文件名。
+2. **传统下载**：Firefox / Safari 或调用失败时退回 `<a download>`（以及 `<input type=file>` 打开），行为与以前一致。
+
+细节：没有句柄时按「另存为」处理（等同于桌面软件的「未命名文档另存」）；用户在系统对话框取消按 `cancelled` 处理，不当错误；
+文件仍限 5 MB；菜单项的提示文案随能力切换（能力探测见 `canWriteFiles()`）。
+
+## 验证证据
+
+本机 Windows + Node v24.11.1 实际执行：
+
+| 命令 | 结果 |
+|:---|:---|
+| `npm.cmd test` | 14 个文件 / 128 个用例通过 |
+| `npm.cmd run typecheck` | 通过 |
+| `npm.cmd run build` | 通过 |
+| `node e2e/smoke.mjs` | **84/84** 通过，新增：悬停展开/移开收起、指针进预览 iframe 也收起、点击后长期展开、选项卡无下边线、关掉自动保存后不再写会话存档且状态栏停在最后一次保存时间、重新勾选后显示「已自动保存 + 时间」、手动保存后显示「已保存 + 时间」、没有写入能力时「保存」退回下载、有句柄时「保存」写回文件且不再弹选择框 |
+
+### 顺带修掉的一处用例脆弱性
+
+会话恢复那条用例原先用「点大纲项 → End → 输入」来落光标。大纲是防抖（180ms）算出来的，刚换过文档时偏移可能还是上一份的；
+一旦落到标题下一行的空行上，后面「恢复后定位一致」就会找不到二级标题。现在直接把光标放进二级标题文字里，不再依赖大纲的防抖时序。

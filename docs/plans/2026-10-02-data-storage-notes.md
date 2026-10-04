@@ -9,7 +9,8 @@
 | 数据 | 现在存在哪 | 说明 |
 |:---|:---|:---|
 | 文档内容、光标、当前样式包、界面布局 | 浏览器 `localStorage`，键 `stylemd:session:v1` | 见 `apps/demo/src/lib/session.ts`；读取一律校验，坏档回落默认预设 |
-| 文档文件本身 | 用户自己挑的位置 | 走浏览器下载（`apps/demo/src/lib/document.ts` 的 `downloadText`），不受下面的改动影响 |
+| 「自动保存」开关 | 浏览器 `localStorage`，键 `stylemd:autosave:v1`（`on` / `off`） | 必须和会话分开存：关掉之后会话本来就不再写，偏好要是塞在会话里，下次打开会变回默认开启；默认 `on` |
+| 文档文件本身 | 用户自己挑的位置 | 优先 File System Access API 写回原文件（Chrome/Edge）；不支持时退回 `<a download>` 下载。见 `apps/demo/src/lib/document.ts`，不受下面的改动影响 |
 | 编辑器配色方案（规划中） | 计划另起一个 `localStorage` 键 `stylemd:editor-schemes:v1` | 见 [编辑器高亮规划](2026-10-02-editor-syntax-highlight.html) §7 |
 
 `localStorage` 落在 Chromium 自己的资料目录里：普通用户找不到、打不开、也没法备份，清一次浏览数据就没了。功能上够用，长期用不合格。

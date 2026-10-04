@@ -92,6 +92,8 @@ body {
 /* 「文件」选项卡与它的下拉菜单 */
 .file-menu { display: inline-flex; align-items: stretch; }
 .ribbon-tab.file-tab { display: inline-flex; align-items: center; gap: 4px; color: var(--accent); font-weight: 600; }
+/* 「文件」悬停就会展开，再画一条选中下边线只会跟着指针一直闪 —— 展开的面板本身就是指示。 */
+.ribbon-tab.file-tab.active { border-bottom-color: transparent; }
 .file-panel {
   position: fixed; z-index: 70; min-width: 176px;
   display: flex; flex-direction: column; padding: 3px;
@@ -104,6 +106,10 @@ body {
   color: var(--ink); font: inherit; font-size: 12px; text-align: left; cursor: pointer;
 }
 .file-item:hover { background: var(--accent-soft); }
+.file-sep { height: 1px; margin: 3px 4px; background: var(--line-strong); }
+/* 「自动保存」是复选项而不是命令项：整行点得动，但按一下不收起菜单。 */
+.file-item.file-check { display: flex; align-items: center; gap: 6px; cursor: pointer; }
+.file-item.file-check input { width: 12px; height: 12px; margin: 0; accent-color: var(--accent); }
 .file-form { display: flex; flex-direction: column; gap: 6px; padding: 6px; }
 .file-form label { display: flex; flex-direction: column; gap: 4px; font-size: 11px; color: var(--muted); }
 .file-form input {
