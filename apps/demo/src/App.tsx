@@ -23,9 +23,9 @@ import { StyleDialog } from './components/StyleDialog'
 import {
   blankDocument,
   documentTitle,
+  fileStem,
   markdownFileName,
   saveMarkdownAs,
-  withDocumentTitle,
   writeToHandle,
   type FileHandle,
   type OpenedFile,
@@ -47,6 +47,8 @@ export function App() {
   // 上一次的存档：文档、光标、样式包、界面布局。坏档一律当没有。
   const [session] = useState(() => loadSession())
   const [markdown, setMarkdown] = useState(() => session?.markdown ?? sampleMarkdown)
+  /** 当前文件名（含扩展名）；null = 还没保存成文件，标题栏显示「未命名」。 */
+  const [fileName, setFileName] = useState<string | null>(() => session?.fileName ?? null)
   const [theme, setTheme] = useState<StyleTheme>(() => {
     if (session?.theme) {
       try {
@@ -320,6 +322,7 @@ export function App() {
       saveSession({
         markdown,
         cursorOffset,
+        fileName: fileName ?? undefined,
         theme,
         viewMode,
         navOpen,
@@ -331,7 +334,7 @@ export function App() {
       setSaved({ at: savedAtValue, kind: 'auto' })
     }, 400)
     return () => window.clearTimeout(timer)
-  }, [autoSave, markdown, cursorOffset, theme, viewMode, navOpen, navWidth, editorWidth, zoom])
+  }, [autoSave, markdown, cursorOffset, fileName, theme, viewMode, navOpen, navWidth, editorWidth, zoom])
 
   const handleAutoSaveChange = useCallback((enabled: boolean) => {
     setAutoSave(enabled)
@@ -351,14 +354,28 @@ export function App() {
   const handleLoadSample = useCallback(() => setMarkdown(sampleMarkdown), [])
   const handleOpenFile = useCallback((file: OpenedFile) => {
     fileHandleRef.current = file.handle
+    setFileName(file.name)
     setMarkdown(file.text)
   }, [])
+  /** 标题栏里改的是**文件名**；文档标题（前置元数据）不动，仍在灰色小字与页眉域里。 */
+  const handleRenameFile = useCallback((stem: string) => {
+    const name = stem.trim()
+    if (!name) return
+    setFileName(markdownFileName(name))
+  }, [])
+  const suggestedFileName = fileName ?? markdownFileName(documentName)
   const handleSaveDocumentAs = useCallback(
     async (name: string) => {
       try {
-        const result = await saveMarkdownAs(markdown, markdownFileName(name))
+        const suggested = markdownFileName(name)
+        const result = await saveMarkdownAs(markdown, suggested)
         if (result.outcome === 'cancelled') return
-        if (result.handle) fileHandleRef.current = result.handle
+        if (result.handle) {
+          fileHandleRef.current = result.handle
+          setFileName(result.handle.name)
+        } else {
+          setFileName(suggested)
+        }
         setSaved({ at: Date.now(), kind: 'manual' })
       } catch (error) {
         window.alert(`保存失败：${error instanceof Error ? error.message : String(error)}`)
@@ -370,7 +387,7 @@ export function App() {
   const handleSaveDocument = useCallback(async () => {
     const handle = fileHandleRef.current
     if (!handle) {
-      await handleSaveDocumentAs(documentName)
+      await handleSaveDocumentAs(fileStem(suggestedFileName))
       return
     }
     try {
@@ -379,11 +396,7 @@ export function App() {
     } catch (error) {
       window.alert(`保存失败：${error instanceof Error ? error.message : String(error)}`)
     }
-  }, [documentName, handleSaveDocumentAs, markdown])
-  const handleRenameDocument = useCallback(
-    (name: string) => setMarkdown((current) => withDocumentTitle(current, name)),
-    [],
-  )
+  }, [handleSaveDocumentAs, markdown, suggestedFileName])
 
   const roleCount = Object.keys(result.stats.counts).length
 
@@ -427,7 +440,8 @@ export function App() {
         onNewDocument={handleNewDocument}
         onSaveDocument={handleSaveDocument}
         onSaveDocumentAs={handleSaveDocumentAs}
-        onRenameDocument={handleRenameDocument}
+        fileName={fileName ? fileStem(fileName) : '未命名'}
+        onRenameFile={handleRenameFile}
         autoSave={autoSave}
         onAutoSaveChange={handleAutoSaveChange}
         previewHoverTick={previewHoverTick}

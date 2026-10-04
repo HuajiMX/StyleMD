@@ -2,6 +2,7 @@ import type { ComputedStyles, RoleStyle, StyleTheme } from '@stylemd/theme-schem
 import type { EditorScheme } from '@stylemd/editor-theme'
 import { StyleGallery } from './StyleGallery'
 import { FileMenu } from './FileMenu'
+import { FileHeading } from './FileHeading'
 import type { OpenedFile } from '../lib/document'
 import {
   DefaultsGroup,
@@ -54,7 +55,9 @@ interface RibbonProps {
   onNewDocument: () => void
   onSaveDocument: () => void
   onSaveDocumentAs: (name: string) => void
-  onRenameDocument: (name: string) => void
+  /** 文件名主名（不含 .md），标题栏大字；点一下可改。 */
+  fileName: string
+  onRenameFile: (name: string) => void
   autoSave: boolean
   onAutoSaveChange: (enabled: boolean) => void
   /** 预览里指针移动的计数（父文档感知不到指针进了 iframe，由预览 postMessage 通报）。 */
@@ -102,9 +105,11 @@ export function Ribbon(props: RibbonProps) {
           <strong>StyleMD</strong>
           <span className="brand-sub">样式管理器原型</span>
         </div>
-        <div className="doc-title" title={props.documentTitle}>
-          {props.documentTitle}
-        </div>
+        <FileHeading
+          fileName={props.fileName}
+          documentTitle={props.documentTitle}
+          onRename={props.onRenameFile}
+        />
         <div className="titlebar-actions">
           <span className={`chip ${statusChip.className}`}>
             {statusChip.text}
@@ -118,13 +123,12 @@ export function Ribbon(props: RibbonProps) {
 
       <nav className="ribbon-tabs" role="tablist" aria-label="功能区">
         <FileMenu
-          documentName={props.documentTitle}
+          fileName={props.fileName}
           onNew={props.onNewDocument}
           onOpenFile={props.onOpenFile}
           onLoadSample={props.onLoadSample}
           onSave={props.onSaveDocument}
           onSaveAs={props.onSaveDocumentAs}
-          onRename={props.onRenameDocument}
           autoSave={props.autoSave}
           onAutoSaveChange={props.onAutoSaveChange}
           previewHoverTick={props.previewHoverTick}

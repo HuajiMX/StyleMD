@@ -4,20 +4,20 @@ import { canWriteFiles, openMarkdownFile, type OpenedFile } from '../lib/documen
 import { IconChevronDown } from './icons'
 
 interface FileMenuProps {
-  documentName: string
+  /** 文件名主名（不含 .md），「另存为」表单拿它当默认值。 */
+  fileName: string
   onNew: () => void
   onOpenFile: (file: OpenedFile) => void
   onLoadSample: () => void
   onSave: () => void
   onSaveAs: (name: string) => void
-  onRename: (name: string) => void
   autoSave: boolean
   onAutoSaveChange: (enabled: boolean) => void
   /** 预览里指针移动的计数：父文档收不到任何鼠标事件，只能由宿主转发这声通报。 */
   previewHoverTick: number
 }
 
-type InlineForm = 'saveAs' | 'rename' | null
+type InlineForm = 'saveAs' | null
 
 /**
  * 最左边的「文件」选项卡：点开是一个下拉菜单。
@@ -132,7 +132,7 @@ export function FileMenu(props: FileMenuProps) {
   })
 
   const startForm = (kind: Exclude<InlineForm, null>) => {
-    setDraft(props.documentName)
+    setDraft(props.fileName)
     setForm(kind)
     // 已经在输入了就别再被悬停收起打断。
     setPinned(true)
@@ -140,10 +140,7 @@ export function FileMenu(props: FileMenuProps) {
 
   const submitForm = () => {
     const name = draft.trim()
-    if (name) {
-      if (form === 'saveAs') props.onSaveAs(name)
-      if (form === 'rename') props.onRename(name)
-    }
+    if (name && form === 'saveAs') props.onSaveAs(name)
     close()
   }
 
@@ -178,9 +175,8 @@ export function FileMenu(props: FileMenuProps) {
       label: '另存为…',
       hint: canWriteFiles() ? '选一个文件写进去（文件名在系统对话框里改）' : '换一个文件名下载一份',
       // 能写文件时文件名交给系统对话框，不用先在自己这个输入框里问一遍
-      run: () => (canWriteFiles() ? void props.onSaveAs(props.documentName) : startForm('saveAs')),
+      run: () => (canWriteFiles() ? void props.onSaveAs(props.fileName) : startForm('saveAs')),
     },
-    { key: 'rename', label: '重命名…', hint: '改文档标题（写回前置元数据）', run: () => startForm('rename') },
   ]
 
   return (
@@ -223,11 +219,11 @@ export function FileMenu(props: FileMenuProps) {
                   }}
                 >
                   <label>
-                    {form === 'saveAs' ? '另存为文件名' : '文档标题'}
+                    另存为文件名
                     <input
                       type="text"
                       autoFocus
-                      aria-label={form === 'saveAs' ? '另存为文件名' : '文档标题'}
+                      aria-label="另存为文件名"
                       value={draft}
                       onChange={(event) => setDraft(event.target.value)}
                       onKeyDown={(event) => {
@@ -258,7 +254,7 @@ export function FileMenu(props: FileMenuProps) {
                       title={item.hint}
                       onClick={() => {
                         item.run()
-                        if (item.key !== 'saveAs' && item.key !== 'rename' && item.key !== 'open') close()
+                        if (item.key !== 'saveAs' && item.key !== 'open') close()
                       }}
                     >
                       {item.label}

@@ -1,5 +1,5 @@
 /**
- * 文档级操作：从正文里取标题、改标题、打开与保存文件。
+ * 文档级操作：从正文里取标题、打开与保存文件。
  *
  * 浏览器里「保存文件」有两条路：
  *  1. File System Access API（Chromium）——拿到文件句柄后能真正写回**原文件**，「保存」与「另存为」才是两件事；
@@ -44,22 +44,15 @@ export function documentTitle(markdown: string, fallback = '未命名文档'): s
   return fallback
 }
 
-/** 改写前置元数据里的 title；没有前置元数据就补一段。 */
-export function withDocumentTitle(markdown: string, title: string): string {
-  const match = FRONTMATTER.exec(markdown)
-  if (!match) return `---\ntitle: ${title}\n---\n\n${markdown}`
-
-  const lines = (match[1] ?? '').split(/\r?\n/)
-  const index = lines.findIndex((line) => /^title\s*:/.test(line.trim()))
-  if (index >= 0) lines[index] = `title: ${title}`
-  else lines.unshift(`title: ${title}`)
-  return markdown.replace(match[0], `---\n${lines.join('\n')}\n---`)
-}
-
 /** 文件名里不能出现的字符换成短横线，并补上 .md。 */
 export function markdownFileName(title: string): string {
   const safe = title.replace(/[\\/:*?"<>|]+/g, '-').trim() || '未命名文档'
   return safe.toLowerCase().endsWith('.md') ? safe : `${safe}.md`
+}
+
+/** 标题栏只显示主名：去掉 .md / .markdown 扩展名。 */
+export function fileStem(fileName: string): string {
+  return fileName.replace(/\.(?:md|markdown)$/i, '')
 }
 
 export function downloadText(fileName: string, text: string): void {

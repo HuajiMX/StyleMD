@@ -878,7 +878,7 @@ async function main() {
     await page.screenshot({ path: path.join(artifactDir, 'demo-smoke.png'), fullPage: false })
 
     // 8e. 「文件」菜单的展开规则：悬停即开、移开即收、点击钉住；外加「自动保存」开关
-    const fileTab = page.getByRole('button', { name: '文件' })
+    const fileTab = page.getByRole('button', { name: '文件', exact: true })
     const fileTabBox = await fileTab.boundingBox()
     const tabCenter = { x: fileTabBox.x + fileTabBox.width / 2, y: fileTabBox.y + fileTabBox.height / 2 }
     const awayInHost = { x: 300, y: 520 }
@@ -954,26 +954,44 @@ async function main() {
       '会话写回 + 状态栏显示「已自动保存 + 时间」',
     )
 
-    // 9. 文件菜单：重命名、新建、载入示例
-    await page.getByRole('button', { name: '文件' }).click()
+    // 9. 文件菜单与标题栏：文件名就地重命名、保存、新建、载入示例
+    await page.getByRole('button', { name: '文件', exact: true }).click()
     await page.waitForSelector('.file-panel', { timeout: 5000 })
     const menuItems = await page.locator('.file-item').allInnerTexts()
     check(
       '新增「文件」菜单',
-      ['新建', '打开…', '保存', '另存为…', '重命名…'].every((label) => menuItems.includes(label)),
+      ['新建', '打开…', '保存', '另存为…', '自动保存'].every((label) => menuItems.includes(label)) &&
+        !menuItems.includes('重命名…'),
       menuItems.join(' / '),
     )
 
-    await page.getByRole('menuitem', { name: '重命名…' }).click()
-    await page.waitForSelector('.file-form', { timeout: 5000 })
-    await page.getByLabel('文档标题').fill('重命名后的文档')
-    await page.getByRole('button', { name: '确定' }).click()
-    const renamed = await until(async () => {
-      const title = await page.locator('.doc-title').innerText()
-      return title.trim() === '重命名后的文档' ? title.trim() : ''
-    }, { label: '重命名生效' })
-    const frontmatterRenamed = (await editorValue(page)).includes('title: 重命名后的文档')
-    check('文件菜单可以重命名文档', frontmatterRenamed, `标题栏：${renamed}`)
+    // 标题栏：大字是文件名（不含 .md），灰色小字是文档标题
+    const titlebar = await page.evaluate(() => {
+      const file = document.querySelector('.doc-file')
+      const sub = document.querySelector('.doc-subtitle')
+      return {
+        file: file?.textContent ?? '',
+        sub: sub?.textContent ?? '',
+        fileSize: file ? Number.parseFloat(getComputedStyle(file).fontSize) : 0,
+        subSize: sub ? Number.parseFloat(getComputedStyle(sub).fontSize) : 0,
+      }
+    })
+    check(
+      '标题栏是「文件名（大字）+ 文档标题（灰色小字）」',
+      titlebar.file.length > 0 &&
+        !/\.md$/i.test(titlebar.file) &&
+        titlebar.sub === 'StyleMD 样式模型设计说明' &&
+        titlebar.fileSize > titlebar.subSize,
+      `${titlebar.file}（${titlebar.fileSize}px） / ${titlebar.sub}（${titlebar.subSize}px）`,
+    )
+
+    await page.locator('.doc-file').click()
+    await page.locator('.doc-file-input').fill('重命名后的文件名')
+    await page.keyboard.press('Enter')
+    const renamed = await until(async () => (await page.locator('.doc-file').innerText()).trim(), {
+      label: '标题栏重命名生效',
+    })
+    check('点击文件名回车即完成重命名', renamed === '重命名后的文件名', `标题栏：${renamed}`)
 
     // 等这一次重命名触发的自动存档落定，再手动保存，否则可能被自动存档覆盖掉「已保存」的措辞
     await page.waitForTimeout(600)
@@ -981,12 +999,16 @@ async function main() {
     await page.evaluate(() =>
       Object.defineProperty(window, 'showSaveFilePicker', { value: undefined, writable: true, configurable: true }),
     )
-    await page.getByRole('button', { name: '文件' }).click()
+    await page.getByRole('button', { name: '文件', exact: true }).click()
     await page.waitForSelector('.file-panel', { timeout: 5000 })
     const download = page.waitForEvent('download', { timeout: 5000 })
     await page.getByRole('menuitem', { name: '保存', exact: true }).click()
     const saved = await download
-    check('没有文件写入能力时「保存」退回下载 .md', saved.suggestedFilename().endsWith('.md'), saved.suggestedFilename())
+    check(
+      '没有文件写入能力时「保存」退回下载，并用标题栏里的文件名',
+      saved.suggestedFilename() === '重命名后的文件名.md',
+      saved.suggestedFilename(),
+    )
     const manualLabel = ((await page.locator('.statusbar').innerText()).match(/已(?:自动)?保存 \d{2}:\d{2}/) ?? [''])[0]
     check('手动保存后状态栏显示「已保存 + 时间」', manualLabel.startsWith('已保存'), manualLabel || '没有保存时间')
 
@@ -1008,7 +1030,7 @@ async function main() {
         }
       }
     })
-    await page.getByRole('button', { name: '文件' }).click()
+    await page.getByRole('button', { name: '文件', exact: true }).click()
     await page.waitForSelector('.file-panel', { timeout: 5000 })
     await page.getByRole('menuitem', { name: '保存', exact: true }).click()
     const firstWrite = await until(
@@ -1024,7 +1046,7 @@ async function main() {
       firstWrite.writes[0] === textAtSave && firstWrite.picked === 1,
       `弹出选择框 ${firstWrite.picked} 次，写入 ${firstWrite.writes[0].length} 字符`,
     )
-    await page.getByRole('button', { name: '文件' }).click()
+    await page.getByRole('button', { name: '文件', exact: true }).click()
     await page.waitForSelector('.file-panel', { timeout: 5000 })
     await page.getByRole('menuitem', { name: '保存', exact: true }).click()
     const secondWrite = await until(
@@ -1036,7 +1058,7 @@ async function main() {
     )
     check('已有文件句柄时不再弹选择框', secondWrite.picked === 1, `选择框只弹过 ${secondWrite.picked} 次`)
 
-    await page.getByRole('button', { name: '文件' }).click()
+    await page.getByRole('button', { name: '文件', exact: true }).click()
     await page.waitForSelector('.file-panel', { timeout: 5000 })
     await page.getByRole('menuitem', { name: '新建' }).click()
     const blank = await until(async () => {
@@ -1045,7 +1067,7 @@ async function main() {
     }, { label: '新建文档' })
     check('文件菜单可以新建文档', blank.startsWith('---'), '生成带前置元数据的空白文档')
 
-    await page.getByRole('button', { name: '文件' }).click()
+    await page.getByRole('button', { name: '文件', exact: true }).click()
     await page.waitForSelector('.file-panel', { timeout: 5000 })
     await page.getByRole('menuitem', { name: '载入示例文档' }).click()
     await until(async () => (await editorValue(page)).includes('StyleMD 样式模型设计说明'), {
@@ -1074,6 +1096,8 @@ async function main() {
       { label: '刷新后恢复文档与光标' },
     )
     check('刷新后恢复上次文档与光标位置', true, `光标复位到偏移 ${restored.caret}`)
+    const restoredFile = (await page.locator('.doc-file').innerText()).trim()
+    check('刷新后文件名也一并恢复', restoredFile === '重命名后的文件名', `标题栏：${restoredFile}`)
     const restoredRole = await until(async () => {
       const text = await page.locator('.statusbar .locator').innerText()
       return text.includes('二级标题') ? text.trim() : ''

@@ -21,8 +21,10 @@ StyleMD 是 Markdown → PDF 的可视化样式管理器。动手前先读 `docs
 - **分隔条拖动**：指针走进预览 iframe 后，父文档收不到 `pointermove`（`setPointerCapture` 也不跨 iframe）。拖动期间给 `body` 加 `is-dragging-pane`，让 iframe `pointer-events: none`，见 `lib/dragResize.ts`。
 - **文本定位**：textarea 里按「行号 × 行高」估算会被软换行带偏，必须用 `lib/textareaScroll.ts` 的镜像元素 + Range 测量。大纲跳转用单点、滚动高亮用批量 `scrollTopsForOffsets`，都走这一套。
 - **滚动同步**：宿主与预览 iframe 之间走 postMessage（`stylemd:scroll` / `stylemd:scroll-report` / `stylemd:zoom` / `stylemd:print` / `stylemd:pagination`）。双向同步要用两层 `requestAnimationFrame` 做静默窗口，否则两边互相推着抖。
-- **会话存档**：`localStorage` 的 `stylemd:session:v1` 保存文档、光标、样式包与界面布局；读取必须经 `migrateTheme` + `validateTheme`，坏档回落默认预设。
+- **会话存档**：`localStorage` 的 `stylemd:session:v1` 保存文档、光标、文件名、样式包与界面布局；读取必须经 `migrateTheme` + `validateTheme`，坏档回落默认预设。
 - **样式窗口**：可拖标题栏移动、可拖右下角缩放，外层只有透明挡板（不压暗底色但要挡住底层点击）；「预览」是每个选项卡表单末尾的一个分区，不要改回固定在窗口底部。
+- **标题栏**：正中是大字**文件名**（不含 `.md`，点开就地改，回车生效）+ 灰色小字**文档标题**。两者是两回事：文件名决定保存 / 下载用什么名字（`localStorage` 会话里的 `fileName`），文档标题写在前置元数据里、供页眉页脚域使用；「重命名」不再放在「文件」菜单里。
+- **文件写入**：优先 File System Access API（打开后「保存」写回原句柄），不支持时退回下载；改这一块看 `lib/document.ts`，别在组件里各写一套。
 
 ## Build, Test, and Development Commands
 
@@ -51,7 +53,7 @@ npm.cmd run cli -- render examples/sample-thesis.md --theme thesis-cn --out out.
 ## Testing Guidelines
 
 - vitest，用例放在 `packages/*/test/*.test.ts`，用 `describe` / `it` 描述**行为**而非实现。
-- UI 交互由 `node e2e/smoke.mjs` 兜住（当前 84 项：分页、跨页表格分片、题注与对象同页、公式排版与内联字体、公式样例在画廊与样式窗口里的渲染与居中、页眉页脚弹窗与域插入/样式入口、光标定位、样式编辑、行内与段落控件、布局与分隔条、文件菜单的悬停/固定展开、文件保存（写回文件与退回下载两条路）、自动保存开关与状态栏的「已保存 / 已自动保存」措辞、会话恢复、双向滚动同步、大纲跳转与滚动高亮）。改了 UI 就同步改断言，别让断言失效成空转。
+- UI 交互由 `node e2e/smoke.mjs` 兜住（当前 86 项：分页、跨页表格分片、题注与对象同页、公式排版与内联字体、公式样例在画廊与样式窗口里的渲染与居中、页眉页脚弹窗与域插入/样式入口、光标定位、样式编辑、行内与段落控件、布局与分隔条、文件菜单的悬停/固定展开、标题栏文件名就地重命名、文件保存（写回文件与退回下载两条路）、自动保存开关与状态栏的「已保存 / 已自动保存」措辞、会话恢复（含文件名）、双向滚动同步、大纲跳转与滚动高亮）。改了 UI 就同步改断言，别让断言失效成空转。
 - 新增内置样式包必须能通过 `validateTheme`（`presets.test.ts` 会兜住）。
 - 改动 CSS 编译或 HTML 渲染输出时同步更新断言，并说明预期变化。
 - 提交前至少跑 `npm.cmd test` 与 `npm.cmd run typecheck`；涉及 UI 再跑 `node e2e/smoke.mjs`。

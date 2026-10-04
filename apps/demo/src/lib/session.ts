@@ -15,6 +15,8 @@ const AUTOSAVE_KEY = 'stylemd:autosave:v1'
 export interface SessionSnapshot {
   markdown: string
   cursorOffset: number
+  /** 当前文件名（含扩展名）。没有就是还没保存成文件，标题栏显示「未命名」。 */
+  fileName?: string
   /** 样式包原样存下，读取时走 migrate + validate 再决定用不用。 */
   theme?: unknown
   viewMode?: string
@@ -34,6 +36,7 @@ export function loadSession(): SessionSnapshot | null {
     return {
       markdown: parsed.markdown,
       cursorOffset: typeof parsed.cursorOffset === 'number' ? parsed.cursorOffset : 0,
+      fileName: typeof parsed.fileName === 'string' ? parsed.fileName : undefined,
       theme: parsed.theme,
       viewMode: parsed.viewMode,
       navOpen: parsed.navOpen,
