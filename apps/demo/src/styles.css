@@ -17,6 +17,9 @@
   --danger: #b93220;
   --mono: ui-monospace, SFMono-Regular, Consolas, "Cascadia Mono", monospace;
   --sans: system-ui, -apple-system, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
+  /* 功能区数字框的宽度：页边距那行是 4 个并排的网格，列宽必须和输入框自身的宽度同源，
+     否则输入框会顶出网格列、吃掉列间距，值也会被常驻的增减箭头挤得显示不全（25.4 这种）。 */
+  --number-field-width: 54px;
   /* 编辑器配色的兜底值（等于内置「纸感」方案）：运行期由配色方案覆盖，
      万一方案库加载失败，编辑区也不会变成没上色或一片漆黑。 */
   --ed-bg: #ffffff;
@@ -174,9 +177,8 @@ body {
   white-space: nowrap;
 }
 .rgroup .furniture-edit:hover { background: #eceff4; color: var(--accent); }
-.rgroup input[type="number"] { width: 46px; }
+.rgroup input[type="number"] { width: var(--number-field-width); }
 .rgroup select { min-width: 66px; }
-.rgroup .quad-row { grid-template-columns: repeat(4, 44px); }
 .rgroup .wide-select { min-width: 104px; max-width: 104px; }
 
 /* 段落组里几乎全是图标按钮：再收一点，别让图标之间空着。 */
@@ -343,7 +345,7 @@ input[type="color"] {
 .field-control { display: flex; align-items: center; gap: 6px; min-width: 0; }
 .field-control > input[type="text"], .field-control > select { width: 100%; }
 
-.quad-row { display: grid; grid-template-columns: repeat(4, 46px); gap: 3px; }
+.quad-row { display: grid; grid-template-columns: repeat(4, var(--number-field-width)); gap: 3px; }
 .wide-select { min-width: 150px; max-width: 200px; }
 
 .seg { display: inline-flex; gap: 0; }

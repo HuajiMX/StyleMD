@@ -813,6 +813,19 @@ async function main() {
     // 数字框的增减箭头要常驻：Chromium 默认只在悬停/聚焦时才画。
     // 这里失焦并把鼠标停在角落，截图和「临时把箭头 opacity 归零」的同一区域对比；
     // 先验证同一状态两次截图逐字节一致，免得把 PNG 编码抖动当成差异（也证明箭头不是靠悬停画出来的）。
+    // 顺带钉住页边距那行：4 个并排的输入框和网格列必须同宽，否则输入框会顶出列宽、
+    // 吃掉 3px 列间距（值也会被常驻箭头挤掉）。
+    const marginRow = await page.locator('.rgroup .quad-row').first().evaluate((row) => ({
+      columns: getComputedStyle(row).gridTemplateColumns.split(' ').map((value) => Number.parseFloat(value)),
+      widths: [...row.querySelectorAll('input[type="number"]')].map((input) => input.getBoundingClientRect().width),
+    }))
+    check(
+      '页边距四个框与网格列同宽（不顶出列、不挤列间距）',
+      marginRow.widths.length === 4 &&
+        marginRow.widths.every((width, index) => Math.abs(width - marginRow.columns[index]) < 0.5),
+      `列宽 ${marginRow.columns.join('/')}，输入框 ${marginRow.widths.join('/')}`,
+    )
+
     await page.evaluate(() => (document.activeElement instanceof HTMLElement ? document.activeElement.blur() : undefined))
     const spinBox = await page.locator('.quad-row input[type="number"]').first().boundingBox()
     const spinClip = { x: spinBox.x + spinBox.width - 16, y: spinBox.y, width: 15, height: spinBox.height }
