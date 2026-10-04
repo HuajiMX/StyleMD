@@ -699,6 +699,19 @@ async function main() {
     const dialogTitle = (await page.locator('.style-dialog h2').innerText()).trim()
     check('点击样式打开配置窗口', dialogTitle === '一级标题', `窗口标题：${dialogTitle}`)
 
+    // 字号下拉点弹窗内别处要收起：样式窗口在内部 stopPropagation 挡的是「点窗口内不该关窗口」，
+    // 而 React 18 把委托挂在 #root，事件冒泡到那里就停了——收起下拉的监听必须走捕获阶段。
+    await page.locator('.style-dialog').getByLabel('字号 pt候选').click()
+    await page.locator('.combo-list').first().waitFor({ timeout: 3000 })
+    const sectionHead = await page.locator('.style-dialog .section-title').first().boundingBox()
+    await page.mouse.click(sectionHead.x + sectionHead.width / 2, sectionHead.y + sectionHead.height / 2)
+    await page.waitForTimeout(150)
+    check(
+      '样式窗口里的字号下拉点别处会收起',
+      (await page.locator('.combo-list').count()) === 0,
+      '点在弹窗内的分区标题上',
+    )
+
     const toolbarControlHeight = await page
       .locator('.rgroup input[type="text"]')
       .first()

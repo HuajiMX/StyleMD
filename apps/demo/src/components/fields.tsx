@@ -129,13 +129,18 @@ function useAnchoredPanel(open: boolean, onDismiss: () => void) {
 
   useEffect(() => {
     if (!open) return
-    const onDocumentMouseDown = (event: MouseEvent) => {
+    const onDocumentPointerDown = (event: PointerEvent) => {
       const target = event.target as Node
       if (rootRef.current?.contains(target) || panelRef.current?.contains(target)) return
       dismissRef.current()
     }
-    document.addEventListener('mousedown', onDocumentMouseDown)
-    return () => document.removeEventListener('mousedown', onDocumentMouseDown)
+    // 必须用捕获阶段的 pointerdown：样式窗口在 `.style-dialog` 上用 stopPropagation 挡住
+    // 「点窗口内部顺手关掉窗口」，而 React 18 把事件委托挂在 #root，原生事件冒泡到那里就被截住了，
+    // 冒泡阶段的 document 监听收不到弹窗内部的点击，字号下拉点外部就收不起来。
+    // 用 pointerdown 而不是 mousedown：窗口右下角的缩放把手在 pointerdown 里 preventDefault，
+    // 后续的 mousedown 压根不会产生，压在把手上时照样得能把下拉收起来。
+    document.addEventListener('pointerdown', onDocumentPointerDown, true)
+    return () => document.removeEventListener('pointerdown', onDocumentPointerDown, true)
   }, [open])
 
   return { rootRef, panelRef, anchor }
