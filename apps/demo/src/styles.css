@@ -15,6 +15,10 @@
   --ok: #1f7a4d;
   --warn: #9a6b00;
   --danger: #b93220;
+  /* 滚动条滑块：默认透明（藏起来），指针移进滚动容器时才染色 */
+  --scroll-thumb: rgba(120, 128, 145, 0.5);
+  /* 编辑器换成深色配色时用这一档：灰滑块压在深底上基本看不见 */
+  --scroll-thumb-dark: rgba(188, 196, 212, 0.58);
   --mono: ui-monospace, SFMono-Regular, Consolas, "Cascadia Mono", monospace;
   --sans: system-ui, -apple-system, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
   /* 功能区数字框的宽度：页边距那行是 4 个并排的网格，列宽必须和输入框自身的宽度同源，
@@ -89,6 +93,38 @@ input[type='radio']:focus-visible {
 .dialog-foot button.primary:focus-visible {
   outline-color: #123a8f;
 }
+
+/* ---------- 滚动条：细、默认藏起来、指针移入滚动区域才浮现 ---------- */
+/*
+ * 只用标准属性 `scrollbar-width` / `scrollbar-color`（Chromium 121+ 与 Firefox 都认）。
+ * 别改用 `::-webkit-scrollbar` 那套伪元素做「悬停才显现」：实测在 Electron 的 Chromium 里，
+ * 容器 `:hover` 变化**不会让滚动条重绘**——滑块颜色改了也画不出来（写死颜色同样不动），
+ * 只有元素自身的样式真的变了（改 class、改内联样式）才会重绘。`scrollbar-color` 是元素自己的
+ * 属性，hover 一改立刻重绘，还能被 transition 过渡，正好做出「移入浮现、移开渐隐」。
+ *
+ * 两条不能动的：
+ *  1. `thin` 而不是 `none`：`none` 会把滚动条的**占位**也一起去掉，内容宽度跟着跳
+ *     （预览那边分页期间 conceal() 靠的也是「只涂透明、保留占位」）。
+ *  2. 默认两色都透明，滑块就藏起来了；`:hover` 会沿祖先冒泡，指针在容器里的任何位置
+ *     （包括滚动条自己那一竖条）都算数。
+ * 用 `*` 而不是逐个列容器：宿主里所有滚动容器长一个样，以后新加的地方也不用再补一条。
+ */
+* {
+  scrollbar-width: thin;
+  scrollbar-color: transparent transparent;
+  transition: scrollbar-color 200ms linear;
+}
+*:hover { scrollbar-color: var(--scroll-thumb) transparent; }
+/*
+ * 编辑器底色随配色方案在浅色 / 深色之间切（纸感 / 夜读），滑块也得跟着换：`applyScheme` 会按底色
+ * 深浅把 `--ed-scroll-thumb` 指到上面两档之一，这里只负责取用。
+ *
+ * 试过两条更「自动」的路都不行：`light-dark()` 会被构建管线的 lightningcss 按根元素的
+ * `color-scheme: light` 提前降级成 `var(--lightningcss-light, …)`，永远只出浅色那份；塞进未注册的
+ * 自定义属性也一样——Chromium 第一次算完就不再重算。`color-mix(…, transparent)` 则会把 RGB 丢掉、
+ * 算成黑色。所以颜色档位交给配色方案显式指。
+ */
+.cm-scroller { --scroll-thumb: var(--ed-scroll-thumb, rgba(120, 128, 145, 0.5)); }
 
 /* ---------- 顶部功能区 ---------- */
 .ribbon {
@@ -196,11 +232,6 @@ input[type='radio']:focus-visible {
 .rgroup.grow { flex: 1 1 180px; min-width: 180px; }
 .rgroup-body { display: flex; flex: 1 1 auto; flex-direction: column; gap: 5px; min-width: 0; min-height: 0; overflow: hidden; }
 .rgroup.grow .rgroup-body { overflow: auto; }
-.rgroup.grow .rgroup-body::-webkit-scrollbar { width: 10px; height: 10px; }
-.rgroup.grow .rgroup-body::-webkit-scrollbar-thumb {
-  background: var(--line-strong); border-radius: 6px; border: 3px solid var(--chrome);
-}
-.rgroup.grow .rgroup-body::-webkit-scrollbar-track { background: transparent; }
 .rgroup-row { display: flex; align-items: center; gap: 6px; min-width: 0; }
 .rgroup-sep { flex: 0 0 auto; width: 1px; height: 16px; margin: 0 3px; background: var(--line-strong); }
 

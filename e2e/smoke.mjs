@@ -181,6 +181,80 @@ async function main() {
     const browserPrintLabel = (await page.locator('.ribbon .titlebar-actions button.primary').innerText()).trim()
     check('浏览器版导出按钮仍是「打印 / 导出 PDF」', browserPrintLabel === '打印 / 导出 PDF', browserPrintLabel)
 
+    // 1.4 滚动条：细、默认透明，指针移进滚动容器才染色。用的是标准属性 scrollbar-width /
+    //     scrollbar-color——`::-webkit-scrollbar` 那套在容器 :hover 变化时 Chromium 不重绘，做不出「移入才显现」。
+    // 断言期间先关掉过渡：滑块颜色带 200ms 渐隐，读到中间态会让比较飘。
+    const noTransition = await page.addStyleTag({
+      content: '*, *::before, *::after { transition: none !important; }',
+    })
+    const scrollbarIdle = await page.locator('.cm-scroller').evaluate((node) => {
+      const style = getComputedStyle(node)
+      return { width: style.scrollbarWidth, color: style.scrollbarColor }
+    })
+    await page.hover('.cm-scroller')
+    await page.waitForTimeout(300)
+    const scrollbarHover = await page
+      .locator('.cm-scroller')
+      .evaluate((node) => getComputedStyle(node).scrollbarColor)
+    // 深色方案（夜读）下滑块要换更亮的一档，否则灰滑块压在深底上看不见。
+    // applyScheme 给的是 --ed-scroll-thumb，这里照它换一次，验证 CSS 这条链真的跟着走。
+    const { light, dark } = await page.evaluate(() => {
+      const node = document.querySelector('.cm-scroller')
+      const root = document.documentElement
+      const previous = root.style.getPropertyValue('--ed-scroll-thumb')
+      const read = () => getComputedStyle(node).scrollbarColor
+      const lightColor = read()
+      root.style.setProperty('--ed-scroll-thumb', 'var(--scroll-thumb-dark)')
+      const darkColor = read()
+      root.style.setProperty('--ed-scroll-thumb', previous)
+      return { light: lightColor, dark: darkColor }
+    })
+    // 构建产物会把颜色压成 #rrggbbaa，运行时又能给出 rgba(…)，两种都得分得清
+    const rgbSum = (color) => {
+      const hex = /^#([\da-f]{6})([\da-f]{2})?$/i.exec(color.trim())
+      if (hex) {
+        return [0, 2, 4].reduce((sum, index) => sum + Number.parseInt(hex[1].slice(index, index + 2), 16), 0)
+      }
+      return (color.match(/[\d.]+/g) ?? [])
+        .slice(0, 3)
+        .map(Number)
+        .reduce((sum, value) => sum + value, 0)
+    }
+    const lighter = rgbSum(dark)
+    await noTransition.evaluate((node) => node.remove())
+    check(
+      '宿主滚动条是细的、默认透明、移入才染色，深色方案里更亮',
+      scrollbarIdle.width === 'thin' &&
+        scrollbarIdle.color === 'rgba(0, 0, 0, 0) rgba(0, 0, 0, 0)' &&
+        scrollbarHover !== scrollbarIdle.color &&
+        dark !== light &&
+        lighter > rgbSum(light),
+      `${scrollbarIdle.width} / 静止 ${scrollbarIdle.color} → 移入 ${scrollbarHover} → 深色 ${dark}`,
+    )
+
+    // 预览是另一份文档：它的滚动条规则写在 renderer-paged 的屏幕外壳里，同样要「移入才显现」
+    let previewFrame = null
+    for (const frame of page.frames()) {
+      if (frame === page.mainFrame()) continue
+      const element = await frame.frameElement()
+      if (element && (await element.getAttribute('class')) === 'preview-iframe') previewFrame = frame
+    }
+    const previewScrollbarIdle = previewFrame
+      ? await previewFrame.evaluate(() => getComputedStyle(document.documentElement).scrollbarColor)
+      : ''
+    await page.hover('iframe.preview-iframe')
+    await page.waitForTimeout(300)
+    const previewScrollbarHover = previewFrame
+      ? await previewFrame.evaluate(() => getComputedStyle(document.documentElement).scrollbarColor)
+      : ''
+    check(
+      '预览 iframe 的滚动条同样默认透明、移入才染色',
+      previewFrame !== null &&
+        previewScrollbarIdle === 'rgba(0, 0, 0, 0) rgba(0, 0, 0, 0)' &&
+        previewScrollbarHover !== previewScrollbarIdle,
+      `静止 ${previewScrollbarIdle || '读不到预览文档'} → 移入 ${previewScrollbarHover}`,
+    )
+
     // 1.5 表单控件的焦点环：浏览器默认那圈（`-webkit-focus-ring-color` 的 auto 描边）已经换成统一的
     //     强调色实线：1px 粗细 + 向内收 1px，跟控件自己的描边一样粗、不往外溢出。文本框按规范
     //     「聚焦即 :focus-visible」，鼠标点进去也有环；按钮用鼠标点不匹配 :focus-visible，
@@ -1412,6 +1486,18 @@ async function main() {
       { label: '点工具带上的方案直接切换' },
     )
     check('点工具带上的配色方案即切换', /rgb\(19, 26, 38\)/.test(darkApplied.bg), `${darkApplied.bg} · color-scheme: ${darkApplied.scheme}`)
+
+    // 切成深色方案后，编辑器的滚动条滑块也要跟着换到更亮的那一档（applyScheme → --ed-scroll-thumb）
+    const darkThumb = await page.evaluate(() =>
+      getComputedStyle(document.querySelector('.cm-scroller')).getPropertyValue('--scroll-thumb').trim(),
+    )
+    // 浅色那档 RGB 合计 393，深色那档 596
+    const darkThumbSum = rgbSum(darkThumb)
+    check(
+      '深色方案下编辑器滚动条滑块换成更亮的一档',
+      darkThumbSum > 500,
+      `${darkThumb}（RGB 合计 ${darkThumbSum}）`,
+    )
 
     const reorderedFirst = await page.locator('.scheme-chip-name').first().innerText()
     check('最近选用的方案自动排到最前', reorderedFirst.trim() === '夜读', `第一位：${reorderedFirst.trim()}`)

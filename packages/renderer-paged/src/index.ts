@@ -30,6 +30,14 @@ export const SCREEN_CHROME_CSS = `@media screen {
     box-shadow: 0 2px 10px rgba(15, 23, 42, 0.16);
     margin: 0 auto 16px;
   }
+  /*
+   * 预览的滚动条跟宿主界面同一套：细、默认透明，指针移进来才染上色、移开渐隐。
+   * 用标准属性而不是 ::-webkit-scrollbar：Chromium 在容器 :hover 变化时不会重绘滚动条
+   * （滑块颜色改了画不出来），而 scrollbar-color 是元素自己的属性，改了立刻重绘、还能过渡。
+   * thin 而不是 none：滚动条的占位要留着，否则分页途中文档高度一变，版面宽度就跟着抖。
+   */
+  html { scrollbar-width: thin; scrollbar-color: transparent transparent; transition: scrollbar-color 200ms linear; }
+  html:hover { scrollbar-color: rgba(120, 128, 145, 0.5) transparent; }
 }`
 
 /** 打印/导出时抵消屏幕外壳，保证 PDF 不受缩放与阴影影响。 */
@@ -72,12 +80,16 @@ function conceal() {
   // 忽长忽短，滚动条拇指就会在预览右边一涨一缩（用户看到的就是「滚动条跳一下」）。这里只把它涂成
   // 全透明：**占位不变**（不做 scrollbar-width: none），换回可见时版面宽度不会跟着动。
   document.documentElement.style.scrollbarColor = 'transparent transparent';
+  // 关掉滑块颜色的过渡：分页一开始就要「立刻透明」，留着 200ms 渐隐会让滑块在半透明状态下
+  // 跟着文档高度一起变，正是上面那条「滚动条跳一下」的成因。
+  document.documentElement.style.transition = 'none';
   if (document.body) document.body.style.background = 'transparent';
 }
 function reveal() {
   document.documentElement.style.visibility = '';
   document.documentElement.style.background = '';
   document.documentElement.style.scrollbarColor = '';
+  document.documentElement.style.transition = '';
   if (document.body) document.body.style.background = '';
 }
 if (embedded) {

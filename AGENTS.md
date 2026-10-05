@@ -40,6 +40,7 @@ StyleMD 是 Markdown → PDF 的可视化样式管理器。动手前先读 `docs
 - **文件写入**：优先 File System Access API（打开后「保存」写回原句柄），不支持时退回下载；改这一块看 `lib/document.ts`，别在组件里各写一套。
 - **导出 PDF**：桌面壳里点一下就出 PDF 并弹系统保存框，浏览器里仍是打印对话框；两条路都从 `App.tsx` 的 `handlePrint` 进出，交出去的 HTML 就是预览那份 `previewHtml`（同一个 `build()` 产物），别为导出另起一条渲染路径。宿主能力统一从 `lib/desktop.ts` 的 `desktopBridge()` / `canExportPdfDirectly()` 取，别在组件里各写一遍 `window.stylemdDesktop` 断言。
 - **表单控件的焦点环**：浏览器默认那圈（`-webkit-focus-ring-color` 的 auto 描边）一律换掉，写法在 `styles.css` 开头的「表单控件的焦点环」一段：`:focus` 时 `outline: none`，`:focus-visible` 时 `1px solid var(--accent)` + `outline-offset: -1px`。1px 且向内收是有意的——粗细和控件自己的描边一样，只在原位置把描边染成强调色，不往外多长一圈（页边距那排数字框挨得紧，外扩的环会和旁边的框叠在一起）。这是「换掉」不是「删掉」：文本框、下拉框按规范「聚焦即 `:focus-visible`」，鼠标点进去也有环；按钮用鼠标点不匹配 `:focus-visible`，于是点击不留痕、键盘 Tab 仍看得见焦点。两处例外要一起改：强调色填充的主按钮（`.primary`）往里收的环看不见，换更深的蓝；勾选框/单选的选中态就是强调色填充，环留在外面（`outline-offset: 0`）。`node e2e/smoke.mjs` 有两条断言守着（文本框的环是 1px/-1px、鼠标点按钮 `outline-style: none`）。
+- **滚动条**：细、默认透明、指针移进滚动区域才显现（移开渐隐）。宿主侧写在 `styles.css` 的「滚动条」一段，用 `* { scrollbar-width: thin; scrollbar-color: transparent transparent; transition: scrollbar-color 200ms linear }` + `*:hover { scrollbar-color: var(--scroll-thumb) transparent }`；预览 iframe 是**另一份文档**，对应的规则在 `renderer-paged` 的 `SCREEN_CHROME_CSS` 里（`html` / `html:hover`），两处要一起改。编辑器还会按配色深浅换滑块：`applyScheme` 按底色把 `--ed-scroll-thumb` 指到 `--scroll-thumb`（浅）或 `--scroll-thumb-dark`（深）那一档，`.cm-scroller` 只是取用——因为 CSS 里没有可靠的「按元素 `color-scheme` 选值」写法：`light-dark()` 会被构建管线的 lightningcss 按根元素的 `color-scheme: light` 提前降级成 `var(--lightningcss-light, …)`，只出浅色那份；塞进未注册的自定义属性也一样，Chromium 第一次算完就不再重算；`color-mix(…, transparent)` 则会丢掉 RGB、算成黑色。四个坑：① 别用 `::-webkit-scrollbar` 那套伪元素做「悬停才显现」——实测 Chromium 在容器 `:hover` 变化时**不重绘滚动条**（滑块颜色改了画不出来，写死颜色也不动，只有元素自身样式真的变了、比如改 class 或内联样式，才会重绘），而 `scrollbar-color` 是元素自己的属性，hover 一改就重绘、还能过渡；② 别用 `scrollbar-width: none`，那会把滚动条的**占位**一起去掉、内容宽度跟着跳（预览分页期间的 `conceal()` 也靠「只涂透明、保留占位」防抖）；③ 预览的 `conceal()` 会顺手把 `documentElement` 的 `transition` 置成 `none`——不关掉的话，分页一开始滑块还要渐隐 200ms，半透明状态下跟着文档高度一起变，就是之前那个「滚动条跳一下」；④ 断言里读颜色要同时认 `rgba(…)` 与构建产物压出来的 `#rrggbbaa`。
 
 ## Build, Test, and Development Commands
 
@@ -89,7 +90,7 @@ npm.cmd run desktop:smoke  # 桌面壳无头自检（13 项：出包 / 桥 / 直
 ## Testing Guidelines
 
 - vitest，用例放在 `packages/*/test/*.test.ts`，用 `describe` / `it` 描述**行为**而非实现。
-- UI 交互由 `node e2e/smoke.mjs` 兜住（当前 103 项：分页、跨页表格分片、题注与对象同页、公式排版与内联字体、公式样例在画廊与样式窗口里的渲染与居中、页眉页脚弹窗与域插入/样式入口、数字框增减箭头常驻与页边距框宽度、字体候选与中西文两个槽（含按 unicode-range 分派的实测、样本与预览一致）、组合框箭头位置、样式窗口下拉点别处收起、光标定位、样式编辑、行内与段落控件、布局与分隔条、文件菜单的悬停/固定展开、标题栏文件名就地重命名、文件保存（写回文件与退回下载两条路）、自动保存开关与状态栏措辞（「已保存 / 已自动保存」、排版途中「正在渲染」）、会话恢复（含文件名）、双向滚动同步、改动重排时预览不闪回文首/不空白/滚动条还原、重排时分页画布压在最上面、切回双栏不露旧版、大纲跳转与滚动高亮、浏览器版导出按钮文案）。改了 UI 就同步改断言，别让断言失效成空转。
+- UI 交互由 `node e2e/smoke.mjs` 兜住（当前 108 项：分页、跨页表格分片、题注与对象同页、公式排版与内联字体、公式样例在画廊与样式窗口里的渲染与居中、页眉页脚弹窗与域插入/样式入口、数字框增减箭头常驻与页边距框宽度、字体候选与中西文两个槽（含按 unicode-range 分派的实测、样本与预览一致）、组合框箭头位置、样式窗口下拉点别处收起、光标定位、样式编辑、行内与段落控件、布局与分隔条、文件菜单的悬停/固定展开、标题栏文件名就地重命名、文件保存（写回文件与退回下载两条路）、自动保存开关与状态栏措辞（「已保存 / 已自动保存」、排版途中「正在渲染」）、会话恢复（含文件名）、双向滚动同步、改动重排时预览不闪回文首/不空白/滚动条还原、重排时分页画布压在最上面、切回双栏不露旧版、大纲跳转与滚动高亮、浏览器版导出按钮文案、宿主与预览两侧滚动条的「默认透明、移入才染色」、切到夜读后编辑器滑块换亮档）。改了 UI 就同步改断言，别让断言失效成空转。
 - 新增内置样式包必须能通过 `validateTheme`（`presets.test.ts` 会兜住）。
 - 改动 CSS 编译或 HTML 渲染输出时同步更新断言，并说明预期变化。
 - 提交前至少跑 `npm.cmd test` 与 `npm.cmd run typecheck`；涉及 UI 再跑 `node e2e/smoke.mjs`。

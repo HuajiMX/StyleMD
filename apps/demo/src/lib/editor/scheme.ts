@@ -83,7 +83,10 @@ export function applyScheme(tokens: EditorSchemeTokens, root: HTMLElement = docu
     root.style.setProperty(variable, tokens[name])
   }
   // 深色配色要让原生滚动条、选区与输入法候选框跟着换皮肤，否则会露馅。
-  root.style.setProperty('--ed-color-scheme', isDarkBackground(tokens.background) ? 'dark' : 'light')
+  const dark = isDarkBackground(tokens.background)
+  root.style.setProperty('--ed-color-scheme', dark ? 'dark' : 'light')
+  // 编辑器里的滚动条滑块同理：深底上换成更亮的一档（两档颜色定义在 styles.css）。
+  root.style.setProperty('--ed-scroll-thumb', dark ? 'var(--scroll-thumb-dark)' : 'var(--scroll-thumb)')
 }
 
 export function isDarkBackground(color: string): boolean {
