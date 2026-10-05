@@ -181,6 +181,21 @@ async function main() {
     const browserPrintLabel = (await page.locator('.ribbon .titlebar-actions button.primary').innerText()).trim()
     check('浏览器版导出按钮仍是「打印 / 导出 PDF」', browserPrintLabel === '打印 / 导出 PDF', browserPrintLabel)
 
+    // 无边框标题栏（拖拽区 + 给系统窗口按钮留位）只是桌面壳的事，浏览器里不该跟着变
+    const browserChrome = await page.evaluate(() => {
+      const bar = document.querySelector('.ribbon-titlebar')
+      return {
+        isDesktop: document.documentElement.classList.contains('is-desktop'),
+        rightPadding: Number.parseFloat(getComputedStyle(bar).paddingRight),
+        appRegion: getComputedStyle(bar).getPropertyValue('-webkit-app-region').trim(),
+      }
+    })
+    check(
+      '浏览器版不会套用桌面壳的标题栏规则',
+      !browserChrome.isDesktop && browserChrome.rightPadding <= 20 && browserChrome.appRegion !== 'drag',
+      `is-desktop=${browserChrome.isDesktop} / padding-right=${browserChrome.rightPadding} / app-region=${browserChrome.appRegion}`,
+    )
+
     // 1.4 滚动条：细、默认透明，指针移进滚动容器才染色。用的是标准属性 scrollbar-width /
     //     scrollbar-color——`::-webkit-scrollbar` 那套在容器 :hover 变化时 Chromium 不重绘，做不出「移入才显现」。
     // 断言期间先关掉过渡：滑块颜色带 200ms 渐隐，读到中间态会让比较飘。

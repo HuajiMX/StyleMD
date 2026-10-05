@@ -19,6 +19,8 @@
   --scroll-thumb: rgba(120, 128, 145, 0.5);
   /* 编辑器换成深色配色时用这一档：灰滑块压在深底上基本看不见 */
   --scroll-thumb-dark: rgba(188, 196, 212, 0.58);
+  /* 自绘标题栏的高度（含下边框）；桌面壳的窗口按钮叠加层用 46-1，最后 1px 留给那条边框线 */
+  --titlebar-height: 46px;
   --mono: ui-monospace, SFMono-Regular, Consolas, "Cascadia Mono", monospace;
   --sans: system-ui, -apple-system, "Segoe UI", "PingFang SC", "Microsoft YaHei", sans-serif;
   /* 功能区数字框的宽度：页边距那行是 4 个并排的网格，列宽必须和输入框自身的宽度同源，
@@ -126,6 +128,22 @@ input[type='radio']:focus-visible {
  */
 .cm-scroller { --scroll-thumb: var(--ed-scroll-thumb, rgba(120, 128, 145, 0.5)); }
 
+/* ---------- 桌面壳：自绘标题栏 ---------- */
+/*
+ * 桌面壳是无边框窗口（`titleBarStyle: 'hidden'`），系统那条标题栏没有了，最上面这条工具带
+ * 标题栏（`.ribbon-titlebar`）就是标题栏本身，得自己负责拖窗口：整条设成拖拽区，
+ * 再把里面的可点元素排除掉——不排除的话，点「导出 PDF」会变成拖窗口而不是点按钮。
+ * 这两条只在壳里生效（`.is-desktop` 由 main.tsx 按 `window.stylemdDesktop` 打标）。
+ * 右上角仍浮着系统那三个窗口按钮（`titleBarOverlay`），所以还得留出它们的位置，
+ * 免得「导出 PDF」压在关闭键底下；macOS 的按钮在左上角，不需要留（`.has-caption-buttons`）。
+ */
+.is-desktop .ribbon-titlebar { -webkit-app-region: drag; }
+.is-desktop .ribbon-titlebar button,
+.is-desktop .ribbon-titlebar input {
+  -webkit-app-region: no-drag;
+}
+.has-caption-buttons .ribbon-titlebar { padding-right: 150px; }
+
 /* ---------- 顶部功能区 ---------- */
 .ribbon {
   flex: 0 0 auto;
@@ -137,6 +155,9 @@ input[type='radio']:focus-visible {
 .ribbon-titlebar {
   display: flex; align-items: center; gap: 10px;
   padding: 5px 10px;
+  /* 高度写死：桌面壳里系统窗口按钮的叠加层要对齐这条栏（46px，最后 1px 是下面那条边框线），
+     靠内容撑会随字体度量漂几分之一像素，按钮和边框就对不齐了。 */
+  height: var(--titlebar-height);
   background: var(--panel);
   border-bottom: 1px solid var(--line);
 }

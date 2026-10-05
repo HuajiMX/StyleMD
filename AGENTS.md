@@ -59,13 +59,15 @@ npm.cmd run cli -- render examples/sample-thesis.md --theme thesis-cn --out out.
 npm.cmd run desktop        # 桌面壳开发态窗口（复用已在跑的 dev server）
 npm.cmd run desktop:start  # 桌面壳打包态窗口（每次重建 demo 产物）
 npm.cmd run desktop:build  # 只打主进程与 preload 到 apps/desktop/dist
-npm.cmd run desktop:smoke  # 桌面壳无头自检（13 项：出包 / 桥 / 直接导出 PDF / 字体枚举）
+npm.cmd run desktop:smoke  # 桌面壳无头自检（17 项：出包 / 桥 / 无边框标题栏 / 直接导出 PDF / 字体枚举）
 ```
 
 ## 桌面壳约定（apps/desktop）
 
 - **打包态走 `stylemd://` 自定义协议**，不用 `loadFile`：Vite 产出的是绝对路径（`/assets/...`），`file://` 下必 404。协议注册成 `standard + secure`，渲染进程才在安全上下文里，`queryLocalFonts()`、剪贴板这类能力以后才用得上。
 - **自定义协议自己算 `Content-Type`**（`MIME_TYPES`）。ES module 对 MIME 挑剔，声明错了整个 bundle 被拒收，表现是白屏 + 控制台一行错，很容易误判成打包坏了。
+- **无边框标题栏**：窗口用 `titleBarStyle: 'hidden'`（macOS 用 `hiddenInset`，让红绿灯落进这条 46px 的标题栏），最上面那条工具带标题栏就是标题栏本身，所以拖窗口也得自己管：`apps/demo` 里由 `main.tsx` 按 `window.stylemdDesktop` 给根节点打 `.is-desktop`，`.ribbon-titlebar` 整条 `-webkit-app-region: drag`、里面的 `button`/`input` 再 `no-drag`（不排除的话点「导出 PDF」会变成拖窗口）。右上角的三个系统按钮保留：非 macOS 走 `titleBarOverlay`，**高度必须比标题栏少 1px**（`CAPTION_OVERLAY_HEIGHT = TITLEBAR_HEIGHT - 1`）——叠加层是一整块矩形，占满 46px 会把标题栏那条 1px 下边框盖掉；`apps/demo` 的 `--titlebar-height: 46px` 与它对齐，并且标题栏高度写死（靠内容撑会随字体度量漂几分之一像素，按钮和边框就对不齐）。非 macOS 再用 `.has-caption-buttons` 给标题栏留 150px 右内边距，免得「导出 PDF」压在关闭键底下（macOS 按钮在左边，不留）。这套只在桌面壳里生效，浏览器版 e2e 有断言守着（不该有 `.is-desktop`、不该有那段留位）。
+- **没有应用菜单栏**：Windows / Linux 上 `Menu.setApplicationMenu(null)` 去掉 Electron 默认那条文件/编辑/视图菜单栏；**macOS 不能删**（菜单在系统菜单栏里，删了会连 Cmd+C / Cmd+V 一起没）。去掉之后 Ctrl+C/V/X/A/Z 在输入框里仍由 Chromium 自己处理，但原来靠菜单提供的捷径（Ctrl+R、Ctrl+W、DevTools）没了——dev 态由 `scripts/dev.mjs` 打开 DevTools，不受影响。
 - **导出 PDF 走隐藏窗口 + `printToPDF`，不复用预览那块 iframe**：渲染进程把与预览同一份 HTML（`previewHtml`）经 `stylemd:pdf:export` 交给主进程，主进程把它挂在自定义协议的 `stylemd://export/<token>` 上（`src/pdf.ts` 里的内存 token 表，不写临时文件），开一个 `show: false` 的窗口加载它、轮询 `window.__stylemdPaged.status` 等分页跑完，再 `printToPDF` 写盘，位置由 `dialog.showSaveDialog` 决定。四个必须保持的点：隐藏窗口要 `backgroundThrottling: false`（隐藏窗口的 rAF 会被限流，而 Paged.js 每排一页都要等一帧，十页文档会从一秒拖到十几秒）；`printToPDF` 要 `preferCSSPageSize: true` + `margins: 0`（纸张与页边距只由主题编译出的 `@page` 决定——实测导出 PDF 的绘制起点 68px=18.00mm、内容宽 658px=174mm，与预设 `marginMm: 18` 完全对得上，再叠一层 Chromium 默认页边距会整体往里缩）；先弹保存框再渲染（渲染要一两秒，让保存框等着比按钮没反应强）；`printToPDF` 打的是整个 webContents，没有「只打某一个 iframe」的能力，所以别想直接把预览 iframe 打出来。浏览器版没有这条通道，仍是 `stylemd:print` → `window.print()`，`apps/demo` 用 `canExportPdfDirectly()` 区分（文案也随之在「打印 / 导出 PDF」与「导出 PDF」之间切换）。
 - **权限只放行 `local-fonts` 与 `clipboard-sanitized-write`**，其余一律拒。加新能力要同时改 `ALLOWED_PERMISSIONS` 与 `bridge.ts` 的契约，别在渲染进程里偷偷挂全局。
 - **preload 保持薄**：只 `contextBridge.exposeInMainWorld` 一个对象，不把 `ipcRenderer` 交出去；新能力必须在 `bridge.ts` 里显式开一个频道。
@@ -90,7 +92,7 @@ npm.cmd run desktop:smoke  # 桌面壳无头自检（13 项：出包 / 桥 / 直
 ## Testing Guidelines
 
 - vitest，用例放在 `packages/*/test/*.test.ts`，用 `describe` / `it` 描述**行为**而非实现。
-- UI 交互由 `node e2e/smoke.mjs` 兜住（当前 108 项：分页、跨页表格分片、题注与对象同页、公式排版与内联字体、公式样例在画廊与样式窗口里的渲染与居中、页眉页脚弹窗与域插入/样式入口、数字框增减箭头常驻与页边距框宽度、字体候选与中西文两个槽（含按 unicode-range 分派的实测、样本与预览一致）、组合框箭头位置、样式窗口下拉点别处收起、光标定位、样式编辑、行内与段落控件、布局与分隔条、文件菜单的悬停/固定展开、标题栏文件名就地重命名、文件保存（写回文件与退回下载两条路）、自动保存开关与状态栏措辞（「已保存 / 已自动保存」、排版途中「正在渲染」）、会话恢复（含文件名）、双向滚动同步、改动重排时预览不闪回文首/不空白/滚动条还原、重排时分页画布压在最上面、切回双栏不露旧版、大纲跳转与滚动高亮、浏览器版导出按钮文案、宿主与预览两侧滚动条的「默认透明、移入才染色」、切到夜读后编辑器滑块换亮档）。改了 UI 就同步改断言，别让断言失效成空转。
+- UI 交互由 `node e2e/smoke.mjs` 兜住（当前 109 项：分页、跨页表格分片、题注与对象同页、公式排版与内联字体、公式样例在画廊与样式窗口里的渲染与居中、页眉页脚弹窗与域插入/样式入口、数字框增减箭头常驻与页边距框宽度、字体候选与中西文两个槽（含按 unicode-range 分派的实测、样本与预览一致）、组合框箭头位置、样式窗口下拉点别处收起、光标定位、样式编辑、行内与段落控件、布局与分隔条、文件菜单的悬停/固定展开、标题栏文件名就地重命名、文件保存（写回文件与退回下载两条路）、自动保存开关与状态栏措辞（「已保存 / 已自动保存」、排版途中「正在渲染」）、会话恢复（含文件名）、双向滚动同步、改动重排时预览不闪回文首/不空白/滚动条还原、重排时分页画布压在最上面、切回双栏不露旧版、大纲跳转与滚动高亮、浏览器版导出按钮文案、浏览器版不套用桌面壳的标题栏规则、宿主与预览两侧滚动条的「默认透明、移入才染色」、切到夜读后编辑器滑块换亮档）。改了 UI 就同步改断言，别让断言失效成空转。
 - 新增内置样式包必须能通过 `validateTheme`（`presets.test.ts` 会兜住）。
 - 改动 CSS 编译或 HTML 渲染输出时同步更新断言，并说明预期变化。
 - 提交前至少跑 `npm.cmd test` 与 `npm.cmd run typecheck`；涉及 UI 再跑 `node e2e/smoke.mjs`。

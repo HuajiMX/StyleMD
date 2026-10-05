@@ -6,6 +6,7 @@ import {
   BrowserWindow,
   dialog,
   ipcMain,
+  Menu,
   protocol,
   session,
   shell,
@@ -35,6 +36,15 @@ const isSmoke = process.env.STYLEMD_SMOKE === '1'
  * `window.queryLocalFonts()`，拿到的名字才是 Chromium 真正会匹配的那套。
  */
 const ALLOWED_PERMISSIONS = new Set(['local-fonts', 'clipboard-sanitized-write'])
+
+/**
+ * 自绘标题栏的高度（与 `apps/demo` 的 `--titlebar-height` 对齐）。
+ * 系统窗口按钮那块叠加层只能占 45px：最后 1px 要留给标题栏的下边框，否则按钮会把那条线盖掉。
+ */
+const TITLEBAR_HEIGHT = 46
+const CAPTION_OVERLAY_HEIGHT = TITLEBAR_HEIGHT - 1
+
+const isMac = process.platform === 'darwin'
 
 const MIME_TYPES: Record<string, string> = {
   '.html': 'text/html; charset=utf-8',
@@ -189,6 +199,17 @@ function createWindow(): BrowserWindow {
     minHeight: 640,
     backgroundColor: '#f2f3f5',
     show: false,
+    /**
+     * 标题栏自绘：藏掉系统那条标题栏，标题栏整块交给页面自己画（工具带最上面那条，
+     * 见 apps/demo 的 `.ribbon-titlebar`）。Windows / Linux 上再叠一层 `titleBarOverlay`，
+     * 把最小化/最大化/关闭三个按钮留在右上角——自己画那三个按钮要新增 IPC 频道、
+     * 还要处理各平台的图标与禁用态，没必要；系统按钮的颜色跟着标题栏底色走。
+     * macOS 的按钮在左边，用 `hiddenInset` 让红绿灯下移，正好落在这条 46px 的标题栏里。
+     */
+    titleBarStyle: isMac ? 'hiddenInset' : 'hidden',
+    ...(isMac
+      ? {}
+      : { titleBarOverlay: { color: '#ffffff', symbolColor: '#46536a', height: CAPTION_OVERLAY_HEIGHT } }),
     webPreferences: {
       preload: path.join(app.getAppPath(), 'dist', 'preload.cjs'),
       contextIsolation: true,
@@ -276,6 +297,17 @@ async function runSmoke(win: BrowserWindow): Promise<void> {
     // 自检态不弹系统保存框（main.ts 的 exportPdf 分支），产物由主进程核对页数。
     const exportButton = document.querySelector('.ribbon .titlebar-actions button.primary')
     const exportLabel = exportButton ? (exportButton.textContent ?? '').trim() : null
+    // 自绘标题栏：整条是拖拽区、里面的按钮要排除，右上角给系统窗口按钮留出位置
+    const titlebar = document.querySelector('.ribbon-titlebar')
+    const docFile = document.querySelector('.ribbon .doc-file')
+    const titlebarAudit = titlebar
+      ? {
+          isDesktop: document.documentElement.classList.contains('is-desktop'),
+          drag: getComputedStyle(titlebar).getPropertyValue('-webkit-app-region').trim(),
+          buttonDrag: docFile ? getComputedStyle(docFile).getPropertyValue('-webkit-app-region').trim() : '',
+          rightPadding: Number.parseFloat(getComputedStyle(titlebar).paddingRight),
+        }
+      : null
     let previewPages = 0
     let exportStatus = null
     let exportBytes = 0
@@ -318,6 +350,7 @@ async function runSmoke(win: BrowserWindow): Promise<void> {
       fontAliasCount: aliasCount,
       fontAliasCjk: aliasSample,
       exportLabel,
+      titlebar: titlebarAudit,
       previewPages,
       exportStatus,
       exportBytes,
@@ -332,11 +365,19 @@ async function runSmoke(win: BrowserWindow): Promise<void> {
     smokePdf = { bytes: data.length, pages: countPdfPages(data) }
   }
 
+  const titlebar = report.titlebar as
+    | { isDesktop: boolean; drag: string; buttonDrag: string; rightPadding: number }
+    | null
+
   const checks: [string, boolean][] = [
     ['渲染进程已挂载（自定义协议出的包能被执行）', report.mounted === true],
     ['preload 桥存在', report.hasBridge === true],
     ['桥标记为桌面环境', report.isDesktop === true],
     ['能读到 Electron 版本', typeof report.electron === 'string' && report.electron.length > 0],
+    ['去掉了 Electron 默认菜单栏', Menu.getApplicationMenu() === null],
+    ['根节点打了桌面壳标记', titlebar?.isDesktop === true],
+    ['自绘标题栏整条可拖、里面的按钮排除在外', titlebar?.drag === 'drag' && titlebar?.buttonDrag === 'no-drag'],
+    ['给右上角的系统窗口按钮留出了位置', (titlebar?.rightPadding ?? 0) >= 140],
     ['桥开了 PDF 导出通道', report.hasExportPdf === true],
     ['桌面壳里导出按钮改成「导出 PDF」', report.exportLabel === '导出 PDF'],
     ['导出 PDF 落盘成功', report.exportStatus === 'saved' && (report.exportBytes as number) > 1000],
@@ -384,6 +425,12 @@ async function main(): Promise<void> {
   await app.whenReady()
 
   registerAppProtocol()
+
+  /**
+   * 去掉 Electron 默认那条菜单栏（文件/编辑/视图/窗口/帮助）。它只占一行、和这套自绘界面
+   * 也不搭；macOS 的菜单在系统菜单栏里，删掉会连 Cmd+C / Cmd+V 一起没，所以留着。
+   */
+  if (!isMac) Menu.setApplicationMenu(null)
 
   session.defaultSession.setPermissionRequestHandler((_contents, permission, callback) => {
     callback(ALLOWED_PERMISSIONS.has(permission))
