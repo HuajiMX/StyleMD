@@ -37,6 +37,20 @@ describe('validateTheme', () => {
     expect(basedOnBody.ok).toBe(true)
   })
 
+  it('首行缩进与悬挂缩进不能同时设置', () => {
+    const both = validateTheme(
+      withStyles([{ role: 'body.text', paragraph: { firstLineIndentChars: 2, hangingIndentChars: 2 } }]),
+    )
+    expect(both.ok).toBe(false)
+    expect(both.errors.join()).toContain('不能同时设置首行缩进与悬挂缩进')
+
+    const hangingOnly = validateTheme(withStyles([{ role: 'body.text', paragraph: { hangingIndentChars: 2 } }]))
+    expect(hangingOnly.ok).toBe(true)
+
+    const negative = validateTheme(withStyles([{ role: 'body.text', paragraph: { hangingIndentChars: -1 } }]))
+    expect(negative.ok).toBe(false)
+  })
+
   it('未知角色只警告不报错（向前兼容）', () => {
     const result = validateTheme(withStyles([{ role: 'future.role' }]))
     expect(result.ok).toBe(true)

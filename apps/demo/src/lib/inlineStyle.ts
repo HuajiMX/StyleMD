@@ -33,6 +33,10 @@ export function specimenFontFaces(styles: ComputedStyles): string[] {
  * 否则编译器出问题时样本会跟着一起错，用户就失去了对照。
  */
 export function computedToInlineStyle(style: ComputedRoleStyle): CSSProperties {
+  // 悬挂缩进：段落整体右移 N 字符、首行再用负缩进拉回边界（与 core 的编译产物同一套落法，
+  // 各自实现是刻意的——见文件头的说明）。
+  const hanging = style.paragraph.hangingIndentChars
+  const leftPt = pt(style.paragraph.indentLeftPt)
   const css: CSSProperties = {
     fontFamily: planFontFamily(style.font, specimenFaceName(style.role)).families.join(', '),
     fontSize: pt(style.font.sizePt),
@@ -43,8 +47,13 @@ export function computedToInlineStyle(style: ComputedRoleStyle): CSSProperties {
     lineHeight: style.paragraph.lineHeight.mode === 'fixed' ? pt(style.paragraph.lineHeight.value) : style.paragraph.lineHeight.value,
     marginBlockStart: pt(style.paragraph.spaceBeforePt),
     marginBlockEnd: pt(style.paragraph.spaceAfterPt),
-    textIndent: `${style.paragraph.firstLineIndentChars}em`,
-    paddingInlineStart: pt(style.paragraph.indentLeftPt),
+    textIndent: hanging > 0 ? `-${hanging}em` : `${style.paragraph.firstLineIndentChars}em`,
+    paddingInlineStart:
+      hanging > 0
+        ? style.paragraph.indentLeftPt
+          ? `calc(${leftPt} + ${hanging}em)`
+          : `${hanging}em`
+        : leftPt,
     padding: style.paddingPt ? pt(style.paddingPt) : undefined,
     backgroundColor: style.background.color,
   }

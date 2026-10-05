@@ -67,5 +67,5 @@ code.block = 2 ← 自己没写，继承来的
 - 约定字段目前没有「跟随正文」的表达：角色想要与正文相同的缩进，得自己写一遍值。若将来确实需要，
   可以给字段加一个显式的 `'inherit'` 哨兵值（仍走同一份清单），而不是把继承重新打开。
 - `validate.ts` 里「只允许基于 `body.text` 跨类别继承」这条口子保持原样——本次不涉及继承边的合法性。
-- 悬挂缩进落地时记得同时做三件事：加进 `PARAGRAPH_CONVENTION_FIELDS`、在 `mergeRoleStyle` 里接上
-  `convention(...)`、补一条按清单驱动的用例。
+- 悬挂缩进已于同日落地：加进 `PARAGRAPH_CONVENTION_FIELDS`、在 `mergeRoleStyle` 里接了
+  `convention(...)`，清单驱动的用例已覆盖它，细节见 `2026-10-05-hanging-indent.md`。

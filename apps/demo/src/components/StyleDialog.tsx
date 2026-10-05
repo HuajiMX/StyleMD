@@ -190,6 +190,23 @@ export function StyleDialog(props: StyleDialogProps) {
     </Section>
   )
 
+  /**
+   * 首行缩进与悬挂缩进在数据上是两个互斥字段（Word / OOXML 的 firstLine 与 hanging 也是这么一对），
+   * 界面上合成 Word 那样的「特殊格式 + 字符数」一个控件：选无就把两个字段都清掉，选另一边就互斥赋值。
+   */
+  const hangingChars = explicit?.paragraph?.hangingIndentChars ?? resolved.paragraph.hangingIndentChars
+  const firstLineChars = explicit?.paragraph?.firstLineIndentChars ?? resolved.paragraph.firstLineIndentChars
+  const indentKind: 'none' | 'first' | 'hanging' =
+    hangingChars > 0 ? 'hanging' : firstLineChars > 0 ? 'first' : 'none'
+  const indentChars = indentKind === 'hanging' ? hangingChars : firstLineChars
+  const applyIndent = (kind: 'none' | 'first' | 'hanging', chars = indentChars > 0 ? indentChars : 2) =>
+    patch({
+      paragraph: {
+        firstLineIndentChars: kind === 'first' ? chars : 0,
+        hangingIndentChars: kind === 'hanging' ? chars : 0,
+      },
+    })
+
   const tabBody: Record<DialogTab, ReactNode> = {
     font: (
       <>
@@ -396,16 +413,30 @@ export function StyleDialog(props: StyleDialogProps) {
                 <span className="unit">pt</span>
               </span>
             </Field>
-            <Field label="首行缩进" inline>
+            <Field label="特殊格式" inline>
               <span className="field-control">
-                <NumberInput
-                  value={explicit?.paragraph?.firstLineIndentChars ?? resolved.paragraph.firstLineIndentChars}
-                  inherited={false}
-                  step={0.5}
-                  ariaLabel="首行缩进 字符"
-                  onChange={(value) => patch({ paragraph: { firstLineIndentChars: value } })}
+                <SelectInput
+                  value={indentKind}
+                  ariaLabel="缩进方式"
+                  options={[
+                    { value: 'none', label: '无' },
+                    { value: 'first', label: '首行缩进' },
+                    { value: 'hanging', label: '悬挂缩进' },
+                  ]}
+                  onChange={(kind) => applyIndent(kind)}
                 />
-                <span className="unit">字符</span>
+                {indentKind === 'none' ? null : (
+                  <>
+                    <NumberInput
+                      value={indentChars}
+                      inherited={false}
+                      step={0.5}
+                      ariaLabel="缩进字符数"
+                      onChange={(value) => applyIndent(indentKind, value ?? 0)}
+                    />
+                    <span className="unit">字符</span>
+                  </>
+                )}
               </span>
             </Field>
           </Row>

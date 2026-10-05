@@ -32,6 +32,23 @@ describe('compileCss', () => {
     expect(css).toContain('border-bottom: 1pt solid #d0d7de;')
   })
 
+  it('悬挂缩进编译成「段落整体左移 + 首行负缩进」', () => {
+    const custom = structuredClone(tech)
+    custom.styles.push({ role: 'reference.item', paragraph: { hangingIndentChars: 2 } })
+    const css = compileCss(resolveStyles(custom))
+    expect(css).toContain('[data-role="reference-item"]')
+    expect(css).toContain('text-indent: -2em;')
+    expect(css).toContain('padding-inline-start: 2em;')
+  })
+
+  it('悬挂缩进与左缩进叠加时用 calc 相加', () => {
+    const custom = structuredClone(tech)
+    custom.styles.push({ role: 'reference.item', paragraph: { hangingIndentChars: 2, indentLeftPt: 12 } })
+    const css = compileCss(resolveStyles(custom))
+    expect(css).toContain('text-indent: -2em;')
+    expect(css).toContain('padding-inline-start: calc(12pt + 2em);')
+  })
+
   it('中西文两个槽相同时走普通回退链，不生成 @font-face', () => {
     const css = compileCss(resolveStyles(tech))
     expect(css).not.toContain('@font-face')

@@ -215,6 +215,16 @@ export function IconFirstLineIndent() {
   )
 }
 
+/** 悬挂缩进：第一行顶格，下面两行右移——首行缩进的反面。 */
+export function IconHangingIndent() {
+  return (
+    <svg {...BASE}>
+      <path d="M2.6 3.6h10.8" />
+      <path d="M6 8h7.4M6 12.4h7.4" />
+    </svg>
+  )
+}
+
 export function IconChevronDown() {
   return (
     <svg {...BASE} width={10} height={10} strokeWidth={1.8}>

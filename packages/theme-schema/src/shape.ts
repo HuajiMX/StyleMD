@@ -44,7 +44,7 @@ const font = object({
 })
 const paragraph = object({
   align: choice('left', 'center', 'right', 'justify'), lineHeight,
-  spaceBeforePt: number(0), spaceAfterPt: number(0), firstLineIndentChars: number(0),
+  spaceBeforePt: number(0), spaceAfterPt: number(0), firstLineIndentChars: number(0), hangingIndentChars: number(0),
   indentLeftPt: number(0), indentRightPt: number(0), keepWithNext: boolean, pageBreakBefore: boolean,
   widows: number(1, false, true), orphans: number(1, false, true),
 })

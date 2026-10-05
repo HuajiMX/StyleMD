@@ -58,6 +58,12 @@ export interface ParagraphSpec {
   spaceAfterPt?: number
   /** "首行缩进 2 字符"：按当前字号换算为 em，随字号正确缩放。 */
   firstLineIndentChars?: number
+  /**
+   * 悬挂缩进 N 字符：首行顶格，其余行缩进 N 字符（参考文献条目、术语表常用）。
+   * 与 `firstLineIndentChars` 互斥——Word / OOXML 里也是 `firstLine` 与 `hanging` 这样一对属性，
+   * 同时设两个属于无效数据，校验会报错。
+   */
+  hangingIndentChars?: number
   indentLeftPt?: number
   indentRightPt?: number
   keepWithNext?: boolean
@@ -77,9 +83,15 @@ export interface ParagraphSpec {
  *    题注、代码块基于正文，图的是字体基线，不该跟着一起缩进、一起两端对齐。谁要缩进谁自己声明。
  *
  * 判定是"字段"而不是"角色"：`body.text` 照样可以声明约定（正文自己当然缩进 2 字符），只是这份声明
- * 不再顺着继承边漏出去。将来加悬挂缩进，也归到这一组。
+ * 不再顺着继承边漏出去。
  */
-export const PARAGRAPH_CONVENTION_FIELDS = ['align', 'firstLineIndentChars', 'indentLeftPt', 'indentRightPt'] as const
+export const PARAGRAPH_CONVENTION_FIELDS = [
+  'align',
+  'firstLineIndentChars',
+  'hangingIndentChars',
+  'indentLeftPt',
+  'indentRightPt',
+] as const
 
 export type ParagraphConventionField = (typeof PARAGRAPH_CONVENTION_FIELDS)[number]
 
@@ -170,7 +182,7 @@ export interface ComputedRoleStyle {
   font: Required<
     Pick<FontSpec, 'latinFamily' | 'cjkFamily' | 'fallbackFamilies' | 'sizePt' | 'weight' | 'italic' | 'color' | 'underline' | 'letterSpacingPt'>
   >
-  paragraph: Required<Pick<ParagraphSpec, 'align' | 'lineHeight' | 'spaceBeforePt' | 'spaceAfterPt' | 'firstLineIndentChars' | 'indentLeftPt' | 'indentRightPt' | 'keepWithNext' | 'pageBreakBefore' | 'widows' | 'orphans'>>
+  paragraph: Required<Pick<ParagraphSpec, 'align' | 'lineHeight' | 'spaceBeforePt' | 'spaceAfterPt' | 'firstLineIndentChars' | 'hangingIndentChars' | 'indentLeftPt' | 'indentRightPt' | 'keepWithNext' | 'pageBreakBefore' | 'widows' | 'orphans'>>
   border: BorderSpec
   background: { color?: string }
   paddingPt: number

@@ -30,6 +30,7 @@ import {
   IconChevronDown,
   IconExport,
   IconFirstLineIndent,
+  IconHangingIndent,
   IconImport,
   IconIndentDecrease,
   IconIndentIncrease,
@@ -256,6 +257,7 @@ export function ParagraphQuickGroup({ ctx }: { ctx: StyleEditContext }) {
   const paragraph = explicit?.paragraph
   const lineHeight = paragraph?.lineHeight ?? resolved.paragraph.lineHeight
   const firstLineIndent = paragraph?.firstLineIndentChars ?? resolved.paragraph.firstLineIndentChars
+  const hangingIndent = paragraph?.hangingIndentChars ?? resolved.paragraph.hangingIndentChars
   const indentLeftPt = paragraph?.indentLeftPt ?? resolved.paragraph.indentLeftPt
   // 每次缩进半个字符（按当前字号折算），中文排版里半个字是最小有意义的步长。
   const indentStep = Math.max(1, Number((resolved.font.sizePt / 2).toFixed(2)))
@@ -332,7 +334,19 @@ export function ParagraphQuickGroup({ ctx }: { ctx: StyleEditContext }) {
           title="首行缩进 2 字符（中文排版惯例），关闭即回到 0"
           glyph={<IconFirstLineIndent />}
           checked={firstLineIndent >= 2}
-          onChange={(checked) => patch({ paragraph: { firstLineIndentChars: checked ? 2 : 0 } })}
+          // 首行缩进与悬挂缩进互斥：打开一边就把另一边归零，免得排出「首行既缩进又悬挂」的怪样子。
+          onChange={(checked) =>
+            patch({ paragraph: checked ? { firstLineIndentChars: 2, hangingIndentChars: 0 } : { firstLineIndentChars: 0 } })
+          }
+        />
+        <IconToggle
+          label="悬挂缩进两字"
+          title="悬挂缩进 2 字符（首行顶格、其余行缩进，参考文献条目常用），关闭即回到 0"
+          glyph={<IconHangingIndent />}
+          checked={hangingIndent >= 2}
+          onChange={(checked) =>
+            patch({ paragraph: checked ? { hangingIndentChars: 2, firstLineIndentChars: 0 } : { hangingIndentChars: 0 } })
+          }
         />
         <button
           type="button"

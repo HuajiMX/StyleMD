@@ -90,19 +90,20 @@ describe('resolveStyles', () => {
 
   it('约定字段清单里的每一项都不参与继承', () => {
     // 这条是"清单即规格"的守卫：往 PARAGRAPH_CONVENTION_FIELDS 里加字段、却忘了在 mergeRoleStyle 里
-    // 接上，就会在这里露出来。
-    const custom = structuredClone(theme)
-    styleOf(custom, 'body.text').paragraph = {
-      ...styleOf(custom, 'body.text').paragraph,
+    // 接上，就会在这里露出来。逐项单独设置，避免首行缩进与悬挂缩进的互斥约束混进来。
+    const samples: Record<(typeof PARAGRAPH_CONVENTION_FIELDS)[number], number | string> = {
       align: 'justify',
       firstLineIndentChars: 2,
+      hangingIndentChars: 2,
       indentLeftPt: 12,
       indentRightPt: 8,
     }
-    custom.styles = custom.styles.filter((style) => style.role !== 'heading.2')
-    custom.styles.push({ role: 'heading.2', basedOn: 'body.text', font: { sizePt: 16 } })
-    const computed = resolveStyles(custom)
     for (const field of PARAGRAPH_CONVENTION_FIELDS) {
+      const custom = structuredClone(theme)
+      styleOf(custom, 'body.text').paragraph = { ...styleOf(custom, 'body.text').paragraph, [field]: samples[field] }
+      custom.styles = custom.styles.filter((style) => style.role !== 'heading.2')
+      custom.styles.push({ role: 'heading.2', basedOn: 'body.text', font: { sizePt: 16 } })
+      const computed = resolveStyles(custom)
       expect(computed.roles['heading.2']!.paragraph[field], `${field} 不该继承`).toBe(field === 'align' ? 'left' : 0)
     }
   })

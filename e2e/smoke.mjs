@@ -637,6 +637,31 @@ async function main() {
     // 复原：后面的段落断言还在同一份样式包上做
     await ribbon.getByRole('button', { name: '首行缩进两字' }).click()
 
+    // 4d-3. 悬挂缩进：段落整体左移、首行用负缩进拉回（首行顶格、其余行缩进），且与首行缩进互斥
+    await ribbon.getByRole('button', { name: '悬挂缩进两字' }).click()
+    const hangingAudit = await until(
+      async () => {
+        const state = await preview.locator('[data-role="body-text"]').first().evaluate((element) => {
+          const style = getComputedStyle(element)
+          const fontSize = Number.parseFloat(style.fontSize)
+          return {
+            indent: Number.parseFloat(style.textIndent) / fontSize,
+            pad: Number.parseFloat(style.paddingInlineStart) / fontSize,
+          }
+        })
+        return Math.abs(state.indent + 2) < 0.05 && state.pad > 1.9 ? state : null
+      },
+      { label: '悬挂缩进生效' },
+    )
+    const firstLineToggle = await ribbon.getByRole('button', { name: '首行缩进两字' }).getAttribute('aria-pressed')
+    check(
+      '悬挂缩进把首行拉回、其余行缩进，并与首行缩进互斥',
+      firstLineToggle === 'false',
+      `首行 ${hangingAudit.indent.toFixed(1)} 字符 / 左内边距 ${hangingAudit.pad.toFixed(1)} 字符 / 首行缩进开关 ${firstLineToggle}`,
+    )
+    // 复原，别把悬挂缩进留给后面的断言
+    await ribbon.getByRole('button', { name: '悬挂缩进两字' }).click()
+
     // 4e. 光标落到排在末尾的表格结构：画廊要自动滚过去，否则聚焦了也找不到
     const tableOffset = await lastLineStartOffset(page, '|')
     if (tableOffset < 0) throw new Error('示例文档里没有表格')

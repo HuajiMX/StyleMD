@@ -79,14 +79,33 @@ function paragraphDeclarations(style: ComputedRoleStyle, counterName?: string): 
   )
   out.push(`margin-block-start: ${pt(paragraph.spaceBeforePt)};`)
   out.push(`margin-block-end: ${pt(paragraph.spaceAfterPt)};`)
-  out.push(`text-indent: ${round(paragraph.firstLineIndentChars)}em;`)
-  if (paragraph.indentLeftPt) out.push(`padding-inline-start: ${pt(paragraph.indentLeftPt)};`)
+  out.push(...indentDeclarations(paragraph))
   if (paragraph.indentRightPt) out.push(`padding-inline-end: ${pt(paragraph.indentRightPt)};`)
   if (paragraph.keepWithNext) out.push('break-after: avoid;')
   if (paragraph.pageBreakBefore) out.push('break-before: page;')
   if (paragraph.widows) out.push(`widows: ${paragraph.widows};`)
   if (paragraph.orphans) out.push(`orphans: ${paragraph.orphans};`)
   if (counterNameish(counterName)) out.push(`counter-increment: ${counterName};`)
+  return out
+}
+
+/**
+ * 首行缩进 / 悬挂缩进的落法。
+ *  - 首行缩进 N 字符：`text-indent: Nem`，段落左边界不动。
+ *  - 悬挂缩进 N 字符：段落整体右移 N 字符（`padding-inline-start` 加上 Nem），首行再用负的
+ *    `text-indent` 拉回内容左边界——首行顶格、其余行缩进 N 字符，参考文献条目就是这个样子。
+ * 两者互斥（`validate` 会拦），真同时出现时按悬挂处理。
+ */
+function indentDeclarations(paragraph: ComputedRoleStyle['paragraph']): string[] {
+  const hanging = round(paragraph.hangingIndentChars)
+  if (hanging > 0) {
+    const left = paragraph.indentLeftPt
+      ? `calc(${pt(paragraph.indentLeftPt)} + ${hanging}em)`
+      : `${hanging}em`
+    return [`text-indent: -${hanging}em;`, `padding-inline-start: ${left};`]
+  }
+  const out = [`text-indent: ${round(paragraph.firstLineIndentChars)}em;`]
+  if (paragraph.indentLeftPt) out.push(`padding-inline-start: ${pt(paragraph.indentLeftPt)};`)
   return out
 }
 

@@ -143,6 +143,10 @@ export function validateTheme(raw: unknown): ThemeValidationResult {
     checkNonNegative(style.paragraph?.spaceBeforePt, `角色「${style.role}」段前间距`, out)
     checkNonNegative(style.paragraph?.spaceAfterPt, `角色「${style.role}」段后间距`, out)
     checkNonNegative(style.paragraph?.firstLineIndentChars, `角色「${style.role}」首行缩进`, out)
+    checkNonNegative(style.paragraph?.hangingIndentChars, `角色「${style.role}」悬挂缩进`, out)
+    if ((style.paragraph?.firstLineIndentChars ?? 0) > 0 && (style.paragraph?.hangingIndentChars ?? 0) > 0) {
+      out.errors.push(`角色「${style.role}」不能同时设置首行缩进与悬挂缩进`)
+    }
     checkNonNegative(style.paddingPt, `角色「${style.role}」内边距`, out)
     if (style.paragraph?.lineHeight && style.paragraph.lineHeight.value <= 0) {
       out.errors.push(`角色「${style.role}」行距必须大于 0`)
