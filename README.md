@@ -29,6 +29,15 @@ node e2e/smoke.mjs        # 端到端冒烟：用本机 Chromium 验证「改样
 node e2e/export-check.mjs # 导出路径检查：生成 PDF 并核对页眉页脚
 ```
 
+桌面壳（Electron，与上面的浏览器工作台共用同一份 demo 产物）：
+
+```powershell
+npm.cmd run desktop        # 开发态窗口：复用已在跑的 dev server，没有就自己起一个
+npm.cmd run desktop:start  # 打包态窗口：重建 demo 产物后按自定义协议加载
+npm.cmd run desktop:build  # 只打主进程与 preload（输出 apps/desktop/dist）
+npm.cmd run desktop:smoke  # 无头自检：协议出包 / preload 桥 / 系统字体枚举
+```
+
 命令行（无需图形界面，证明核心库与宿主无关）：
 
 ```powershell
@@ -48,6 +57,7 @@ packages/editor-theme    编辑器配色：14 个色槽、5 套预设、色值�
 packages/renderer-paged  Paged.js 集成（纯字符串进、纯字符串出）
 apps/demo                浏览器工作台：源码（CodeMirror 6）/ 分页预览 / 样式检查器（React + Vite）
 apps/cli                 命令行入口（tsx）
+apps/desktop             桌面壳：Electron 主进程 + preload 桥（自定义 stylemd:// 协议出包）
 e2e                      Chromium 端到端冒烟与导出检查
 examples                 示例文档
 docs/plans               开发规划与 M0 验证结论
@@ -81,5 +91,17 @@ Firefox / Safari 拿不到写入能力时退回下载 .md，行为与以前一�
 标题栏：大字是**文件名**（点一下就地改，回车生效），灰色小字是**文档标题**；文件名决定保存 / 下载用什么名字，
 文档标题仍写在前置元数据里供页眉页脚使用。文件名随会话保存，刷新后一并恢复。
 
+字体：候选不再是一张手写的名字表——桌面壳里是主进程枚举出来的本机字体（四百多个家族），
+浏览器里走 `queryLocalFonts`（要先授权，不会主动弹框），都不行才退回常用清单，常用的始终排在最前面。
+中文与西文分开设置（样式窗口「字体」页）：**西文默认「使用中文字体」**，也就是不单独指定；
+选了具体字体就写在回退链的最前面，中文那项不受影响。功能区只保留一个字体框（就是中文字体），
+整条回退链收进「进阶：回退链」。
+
+桌面壳：`apps/desktop` 用 Electron 把同一个 demo 产物包起来（预览与导出仍是同一份 `build()` 输出），
+主进程按 `contextIsolation` / `sandbox` 开、`nodeIntegration` 关的推荐配置运行，只经 preload 暴露一个薄桥
+`window.stylemdDesktop`（平台与版本信息、系统字体枚举）；打包态用注册为 secure 的 `stylemd://` 协议服务
+`apps/demo/dist`，既保住 Vite 的绝对路径资源，也让渲染进程处在安全上下文里——这是以后
+`queryLocalFonts()` 之类能力的前提。字体枚举在主进程侧走注册表（Windows）/ `fc-list`（mac、Linux）。
+
 未实现（见规划中的里程碑）：目录与页码联动、图表编号与交叉引用、渲染输出侧的代码块高亮（Shiki）、脚注、图文环绕、
-公式编号自动递增与交叉引用（现阶段用 KaTeX 的 `\tag` 手工编号）、DOCX / Typst 后端、桌面壳打包。
+公式编号自动递增与交叉引用（现阶段用 KaTeX 的 `\tag` 手工编号）、DOCX / Typst 后端、桌面壳的安装包（打包 / 签名 / 自动更新）。

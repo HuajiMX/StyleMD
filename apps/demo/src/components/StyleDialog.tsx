@@ -17,9 +17,18 @@ import {
 import { computedToInlineStyle } from '../lib/inlineStyle'
 import { explicitStyle, resolvedStyle } from '../lib/roleStyle'
 import { clamp, useDialogFrame } from '../lib/dialogFrame'
+import {
+  canRequestSystemFonts,
+  fontLabel,
+  fontOptions,
+  loadFontCatalog,
+  resolveFontInput,
+  useFontCatalog,
+} from '../lib/fontCatalog'
+import { FOLLOW_CJK_LABEL, isCjkFamily, readFontSlots, writeFontCjk, writeFontWestern } from '../lib/fontChain'
 import { FONT_FAMILIES, FONT_WEIGHTS } from '../lib/typePresets'
 import { AlignSegmented } from './align-control'
-import { Field, FontSizeCombo, IconToggle, NumberInput, Row, Section, SelectInput, ToggleChip } from './fields'
+import { Combo, Field, FontSizeCombo, IconToggle, NumberInput, Row, Section, SelectInput, ToggleChip } from './fields'
 import { isMathSample, MathSample } from './MathSample'
 
 type DialogTab = 'font' | 'paragraph' | 'border' | 'numbering' | 'advanced'
@@ -100,6 +109,8 @@ export function StyleDialog(props: StyleDialogProps) {
   const resolved = resolvedStyle(computed, role)
   const explicit = explicitStyle(theme, role)
   const definition = ROLES.find((item) => item.id === role)
+  // hook 必须在下面那个「未知角色」的提前 return 之前调用
+  const catalog = useFontCatalog()
 
   // 只在挂载时接管焦点与 Esc：这个 effect 不能挂在 props 上，
   // 否则每次输入都会重新聚焦对话框，正在编辑的输入框会被顶掉。
@@ -146,6 +157,14 @@ export function StyleDialog(props: StyleDialogProps) {
   }
 
   const patch = (next: Partial<RoleStyle>) => props.onRoleChange(role, next)
+  const chain = explicit?.font?.family ?? resolved.font.family
+  const slots = readFontSlots(chain)
+  const options = fontOptions(catalog)
+  // 西文那一栏只列拉丁字体：中文字体放进去会连中文字形一起接管，等于把中文字体也改了
+  const westernOptions = [
+    { value: '', label: FOLLOW_CJK_LABEL, hint: '默认' },
+    ...options.filter((option) => !isCjkFamily(option.value)),
+  ]
   const allowedBasedOn = ROLES.filter(
     (item) => item.id !== role && (roleCategory(item.id) === roleCategory(role) || item.id === 'body.text'),
   )
@@ -174,31 +193,52 @@ export function StyleDialog(props: StyleDialogProps) {
   const tabBody: Record<DialogTab, ReactNode> = {
     font: (
       <>
-        <Section title="字体" note="逗号分隔的回退链">
+        <Section title="字体" note={catalog.note}>
           <Row>
             <Field
-              label="字体族"
+              label="中文字体"
               inline
-              wide
-              inherited={explicit?.font?.family === undefined}
-              hint="逗号分隔；工具带里的字体框只改首选字体，这里可以编辑整条链"
+              inherited={explicit?.font?.family === undefined || !slots.cjk}
+              hint="中文（以及日韩）字符用这一项"
             >
-              <input
-                type="text"
-                aria-label="字体族回退链"
-                value={(explicit?.font?.family ?? resolved.font.family).join(', ')}
-                onChange={(event) =>
-                  patch({
-                    font: {
-                      family: event.target.value
-                        .split(',')
-                        .map((item) => item.trim())
-                        .filter(Boolean),
-                    },
-                  })
-                }
+              <Combo
+                className="font-primary-combo"
+                ariaLabel="中文字体"
+                inherited={explicit?.font?.family === undefined || !slots.cjk}
+                value={fontLabel(slots.cjk, catalog.aliases)}
+                options={options}
+                onPick={(family) => patch({ font: { family: writeFontCjk(chain, family) } })}
+                onCommit={(text) => {
+                  const family = resolveFontInput(text, catalog)
+                  if (family) patch({ font: { family: writeFontCjk(chain, family) } })
+                }}
               />
             </Field>
+            <Field
+              label="西文字体"
+              inline
+              inherited={explicit?.font?.family === undefined}
+              hint="拉丁字母与数字用这一项；默认「使用中文字体」，也就是不单独指定"
+            >
+              <Combo
+                className="font-primary-combo"
+                ariaLabel="西文字体"
+                inherited={explicit?.font?.family === undefined}
+                value={slots.western ? fontLabel(slots.western, catalog.aliases) : FOLLOW_CJK_LABEL}
+                options={westernOptions}
+                onPick={(family) => patch({ font: { family: writeFontWestern(chain, family) } })}
+                onCommit={(text) => {
+                  const family = resolveFontInput(text, catalog)
+                  patch({ font: { family: writeFontWestern(chain, family === FOLLOW_CJK_LABEL ? '' : family) } })
+                }}
+              />
+            </Field>
+          </Row>
+          <Row>
+            <span className="section-text">
+              西文一栏只列拉丁字体：中文字体自带中文字形，放到西文位置会连中文一起接管，等于同时改了中文字体。
+              想让中英文都用同一种，把它设到「中文字体」、西文保持「使用中文字体」即可。
+            </span>
           </Row>
           <Row>
             <span className="field-label">常用</span>
@@ -207,14 +247,53 @@ export function StyleDialog(props: StyleDialogProps) {
                 key={family}
                 type="button"
                 className="family-hint"
-                onClick={() =>
-                  patch({ font: { family: [family, ...resolved.font.family.filter((item) => item !== family)] } })
-                }
+                onClick={() => patch({ font: { family: writeFontCjk(chain, family) } })}
               >
-                {family}
+                {fontLabel(family, catalog.aliases)}
               </button>
             ))}
+            {/* 浏览器里读本机字体要先授权，而权限框必须由用户手势触发：
+                没授权时给个入口，别让人以为「只有这几个字体」。桌面壳不需要这一步。 */}
+            {canRequestSystemFonts() && catalog.source !== 'browser' ? (
+              <button
+                type="button"
+                className="family-hint"
+                onClick={() => void loadFontCatalog(true)}
+                title="浏览器会先问一次「是否允许查看本机字体」"
+              >
+                加载本机字体
+              </button>
+            ) : null}
           </Row>
+          {/* 平时不该看见的东西：只有要精确控制中英混排时才动它，折叠起来不占版面 */}
+          <details className="advanced-block">
+            <summary>进阶：回退链</summary>
+            <Row>
+              <Field
+                label="回退链"
+                inline
+                wide
+                inherited={explicit?.font?.family === undefined}
+                hint="逗号分隔，按顺序逐个尝试。中英混排时西文字体写前面、中文字体跟在后面，末尾留一个 serif / sans-serif。"
+              >
+                <input
+                  type="text"
+                  aria-label="字体族回退链"
+                  value={chain.join(', ')}
+                  onChange={(event) =>
+                    patch({
+                      font: {
+                        family: event.target.value
+                          .split(',')
+                          .map((item) => item.trim())
+                          .filter(Boolean),
+                      },
+                    })
+                  }
+                />
+              </Field>
+            </Row>
+          </details>
         </Section>
 
         <Section title="字号与字形">

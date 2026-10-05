@@ -260,6 +260,7 @@ body {
 .combo-option em { font-style: normal; font-size: 10.5px; color: var(--muted); }
 .combo-empty { padding: 4px 7px; font-size: 11px; color: var(--muted); }
 .font-family-combo { width: 118px; }
+.font-primary-combo { width: 220px; }
 .font-size-combo { width: 62px; }
 
 /* 图标按钮 + 悬浮面板：段落那组数值用它，省掉一行一个带标签的输入框。 */
@@ -666,6 +667,11 @@ body.is-dragging-pane .preview-iframe { pointer-events: none; }
 .field.inline .field-label { color: var(--ink-2); }
 .field.inline input[type="text"] { width: 150px; }
 .field.inline.wide input[type="text"] { width: 380px; }
+/* 组合框的壳自己有宽度，输入框必须跟着壳走：`.field.inline input[type="text"]`
+   那条（0,3,1）比 `.combo input`（0,2,1）权重高，会把输入框写死成 150px；
+   壳比 150px 宽时输入框不会跟着长，绝对定位的箭头就飘到框外面去了。
+   （壳比 150px 窄时之所以看不出问题，是因为 flex 会把输入框压回壳宽。） */
+.field.inline .combo input[type="text"] { width: 100%; }
 .field.inline input[type="number"] { width: 62px; }
 .field.inline select { min-width: 104px; max-width: 190px; }
 .field.inline input[type="color"] { width: 30px; height: 20px; }
@@ -677,6 +683,16 @@ body.is-dragging-pane .preview-iframe { pointer-events: none; }
   background: transparent; color: var(--accent); font-size: 10.5px; cursor: pointer;
 }
 .family-hint:hover { background: var(--accent-soft); }
+
+/* 进阶项：回退链这类「平时不该看见」的设置折叠起来，别占着版面跟首选字体抢注意力 */
+.advanced-block > summary {
+  list-style: none; cursor: pointer; font-size: 11px; color: var(--muted);
+}
+.advanced-block > summary::-webkit-details-marker { display: none; }
+.advanced-block > summary::before { content: '▸ '; }
+.advanced-block[open] > summary::before { content: '▾ '; }
+.advanced-block > summary:hover { color: var(--ink); }
+.advanced-block[open] > summary { margin-bottom: 5px; }
 
 .sample-box {
   border: 1px dashed var(--line-strong); border-radius: 8px;

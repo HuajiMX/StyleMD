@@ -38,7 +38,8 @@ import {
   IconReset,
   IconUndo,
 } from './icons'
-import { FONT_FAMILIES, primaryFamily, withPrimaryFamily } from '../lib/typePresets'
+import { fontLabel, fontOptions, resolveFontInput, useFontCatalog } from '../lib/fontCatalog'
+import { ribbonFontValue, writeFontCjk } from '../lib/fontChain'
 
 /** 工具栏里「快速改当前结构」需要的一整套上下文。 */
 export interface StyleEditContext {
@@ -161,6 +162,16 @@ export function FontQuickGroup({ ctx }: { ctx: StyleEditContext }) {
   const font = explicit?.font
   const patch = (next: Partial<RoleStyle>) => ctx.onRoleChange(role, next)
   const weight = font?.weight ?? resolved.font.weight
+  const catalog = useFontCatalog()
+  const chain = font?.family ?? resolved.font.family
+  const options = fontOptions(catalog)
+  // 功能区只放中文字体这一个框（西文在样式窗口里设），显示的值见 ribbonFontValue
+  const shownFamily = ribbonFontValue(chain)
+  const inherited = font?.family === undefined || !shownFamily
+  const commit = (text: string) => {
+    const family = resolveFontInput(text, catalog)
+    if (family) patch({ font: { family: writeFontCjk(chain, family) } })
+  }
 
   return (
     <RibbonGroup label="字体" note={roleLabel(role)} onExpand={() => ctx.onOpenDialog(role)}>
@@ -168,20 +179,17 @@ export function FontQuickGroup({ ctx }: { ctx: StyleEditContext }) {
         <Field
           label=""
           compact
-          inherited={!font?.family}
-          hint={`当前回退链：${(font?.family ?? resolved.font.family).join(', ')}\n下拉选一个字体，或直接输入字体名（只改首选字体，其余回退保留）`}
+          inherited={inherited}
+          hint={`中文字体：${fontLabel(shownFamily, catalog.aliases) || '未指定'}\n候选来源：${catalog.note}\n完整回退链：${chain.join(', ')}\n下拉选一个字体，或直接输入字体名（只改中文字体，西文字体与其余回退保留）`}
         >
           <Combo
             className="font-family-combo"
             ariaLabel="字体族"
-            inherited={font?.family === undefined}
-            value={primaryFamily(font?.family ?? resolved.font.family)}
-            options={FONT_FAMILIES.map((family) => ({ value: family, label: family }))}
-            onPick={(family) => patch({ font: { family: withPrimaryFamily(font?.family ?? resolved.font.family, family) } })}
-            onCommit={(text) => {
-              const family = text.trim()
-              if (family) patch({ font: { family: withPrimaryFamily(font?.family ?? resolved.font.family, family) } })
-            }}
+            inherited={inherited}
+            value={fontLabel(shownFamily, catalog.aliases)}
+            options={options}
+            onPick={(family) => patch({ font: { family: writeFontCjk(chain, family) } })}
+            onCommit={commit}
           />
         </Field>
         <Field label="" compact inherited={font?.sizePt === undefined}>

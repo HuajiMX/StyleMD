@@ -29,6 +29,8 @@
     "apps/cli/src/**/*.ts",
     "apps/demo/src/**/*.ts",
     "apps/demo/src/**/*.tsx",
+    "apps/demo/test/**/*.ts",
+    "apps/desktop/src/**/*.ts",
     "vitest.config.ts"
   ]
 }

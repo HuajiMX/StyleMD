@@ -93,6 +93,8 @@ export interface ComboOption {
   value: string
   label: string
   hint?: string
+  /** 额外搜索关键词（例如字体的英文名），不上屏、只参与过滤 */
+  keywords?: string
 }
 
 interface Anchor {
@@ -174,7 +176,12 @@ export function Combo({ value, options, ariaLabel, title, className, inherited, 
   // 只在用户真的动过输入框后才过滤，否则一聚焦就只剩当前值一项。
   const query = draft?.trim().toLowerCase() ?? ''
   const shown = draft !== null && query
-    ? options.filter((option) => option.label.toLowerCase().includes(query) || option.hint?.toLowerCase().includes(query))
+    ? options.filter(
+        (option) =>
+          option.label.toLowerCase().includes(query) ||
+          option.hint?.toLowerCase().includes(query) ||
+          option.keywords?.toLowerCase().includes(query),
+      )
     : options
 
   const commit = (text: string | null) => {

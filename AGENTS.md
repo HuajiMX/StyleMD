@@ -10,6 +10,7 @@ StyleMD 是 Markdown → PDF 的可视化样式管理器。动手前先读 `docs
 - `apps/demo/` — React + Vite 工作台；`apps/cli/` — 命令行入口。
   - `src/components/` — `Ribbon`（标题栏 / 选项卡 / 分组工具带）、`OutlinePanel`（大纲导航）、`SourcePane` / `PreviewPane`、`StatusBar`（全局底部栏）、`StyleDialog`（样式配置窗口）、`fields.tsx`（表单控件与组合框）、`icons.tsx`。
   - `src/lib/` — `session.ts`（会话存档）、`textareaScroll.ts`（光标与滚动定位）、`outline.ts`（目录）、`dragResize.ts`（分隔条）、`document.ts`（文档级操作）、`themeOps.ts`、`typePresets.ts`。
+- `apps/desktop/` — Electron 桌面壳，包同一个 demo 产物。`src/main.ts`（主进程：自定义协议、权限、IPC）、`src/preload.ts`（薄桥）、`src/bridge.ts`（桥的契约与频道名）、`src/fonts.ts`（字体中文名字典）、`scripts/*.mjs`（dev / build / start / smoke）。
 - `e2e/` — 基于本机 Chromium 的端到端脚本，产物写入 `e2e/artifacts/`（已 gitignore）。
 - `examples/` — 示例文档；`docs/plans/` — 规划、验证结论、需求与参考图。
 
@@ -18,6 +19,9 @@ StyleMD 是 Markdown → PDF 的可视化样式管理器。动手前先读 `docs
 布局：顶部功能区（标题栏 + 选项卡 + 分组工具带）、左侧可折叠大纲、中间编辑器与右侧分页预览（两条可拖动分隔条）、底部全局状态栏。样式配置在**弹窗**里，没有右侧常驻面板——不要把它改回去。
 
 - **CSS 权重**：`.ribbon button` 这类通用规则的权重高于组件类，会把组件的内边距压掉。功能区里的组件样式要带前缀写，例如 `.ribbon .ribbon-tab`、`.rgroup .popover-trigger`、`.rgroup .seg-button`。
+- **组合框的输入框要跟着壳走**：`.field.inline input[type="text"]`（0,3,1）压过 `.combo input`（0,2,1），壳比 150px 宽时输入框不会跟着长，绝对定位的箭头就飘到框外面（字号那种窄壳看不出来，因为 flex 会把输入框压回去）。`styles.css` 里用 `.field.inline .combo input[type="text"] { width: 100% }` 兜住，e2e 有断言守着。
+- **字体分中西文两个槽**：模型里仍是一条回退链（`FontSpec.family`），`lib/fontChain.ts` 把它读写成一个「中文字体 + 西文字体」对——西文空串表示「使用中文字体」，写回时把西文插在第一个中文字体前面。功能区只放中文字体一个框（用 `ribbonFontValue` 取值，链里没有中文字体时退回主字体，避免代码角色显示成空框），中西文分开设只在样式窗口里。候选来自 `lib/fontCatalog.ts`：`queryLocalFonts`（桌面壳已放行权限，浏览器里要先授权、不主动弹框）→ 常用清单，常用的排在最前。
+- **西文槽不收中文字体**：中文字体自带中文字形，一旦排到链的最前面就会把中文也一起接管，等于把中文字体也改了——「西文用宋体、中文用微软雅黑」这种组合 CSS 表达不了，模型里也就存不下。所以西文下拉过滤掉中文字体，`writeFontWestern` 拿到中文字体时按「使用中文字体」处理，样式窗口里也写明了这条规则。
 - **分隔条拖动**：指针走进预览 iframe 后，父文档收不到 `pointermove`（`setPointerCapture` 也不跨 iframe）。拖动期间给 `body` 加 `is-dragging-pane`，让 iframe `pointer-events: none`，见 `lib/dragResize.ts`。
 - **文本定位**：textarea 里按「行号 × 行高」估算会被软换行带偏，必须用 `lib/textareaScroll.ts` 的镜像元素 + Range 测量。大纲跳转用单点、滚动高亮用批量 `scrollTopsForOffsets`，都走这一套。
 - **滚动同步**：宿主与预览 iframe 之间走 postMessage（`stylemd:scroll` / `stylemd:scroll-report` / `stylemd:zoom` / `stylemd:print` / `stylemd:pagination`）。双向同步要用两层 `requestAnimationFrame` 做静默窗口，否则两边互相推着抖。
@@ -45,7 +49,27 @@ npm.cmd run build:math-css   # 重新生成内联公式字体样式（升级 kat
 node e2e/smoke.mjs     # 端到端冒烟（需本机 Chromium，可用 STYLEMD_CHROME 指定）
 node e2e/export-check.mjs
 npm.cmd run cli -- render examples/sample-thesis.md --theme thesis-cn --out out.html
+npm.cmd run desktop        # 桌面壳开发态窗口（复用已在跑的 dev server）
+npm.cmd run desktop:start  # 桌面壳打包态窗口（每次重建 demo 产物）
+npm.cmd run desktop:build  # 只打主进程与 preload 到 apps/desktop/dist
+npm.cmd run desktop:smoke  # 桌面壳无头自检（5 项：出包 / 桥 / 字体枚举）
 ```
+
+## 桌面壳约定（apps/desktop）
+
+- **打包态走 `stylemd://` 自定义协议**，不用 `loadFile`：Vite 产出的是绝对路径（`/assets/...`），`file://` 下必 404。协议注册成 `standard + secure`，渲染进程才在安全上下文里，`queryLocalFonts()`、剪贴板这类能力以后才用得上。
+- **自定义协议自己算 `Content-Type`**（`MIME_TYPES`）。ES module 对 MIME 挑剔，声明错了整个 bundle 被拒收，表现是白屏 + 控制台一行错，很容易误判成打包坏了。
+- **权限只放行 `local-fonts` 与 `clipboard-sanitized-write`**，其余一律拒。加新能力要同时改 `ALLOWED_PERMISSIONS` 与 `bridge.ts` 的契约，别在渲染进程里偷偷挂全局。
+- **preload 保持薄**：只 `contextBridge.exposeInMainWorld` 一个对象，不把 `ipcRenderer` 交出去；新能力必须在 `bridge.ts` 里显式开一个频道。
+- **窗口安全基线**：`contextIsolation: true`、`sandbox: true`、`nodeIntegration: false`；外链交给系统浏览器（`setWindowOpenHandler` + `will-navigate` 拦截）。
+- **本机跑 GUI 要在沙箱外**：Electron 在主机的文件沙箱里会以 `0xC0000005` 崩溃，`npm.cmd run desktop` / `desktop:smoke` 需要提升权限执行；另外 PowerShell 里 `npm.cmd ... 2>&1` 会把 stderr 当异常，退出码会被带偏，看退出码别套 `2>&1`。
+- **改主进程代码必须重启窗口**：`src/main.ts` 与 `src/preload.ts` 走 esbuild 打成 `dist/main.cjs` / `preload.cjs`，HMR 只管渲染进程。只热更渲染层会出现「主进程还是旧代码、界面已经换了」的状态，排查时极易误判（真被「注册表解码修好了但界面上还是乱码」坑过一次）。`scripts/dev.mjs` 现在监听 `src/`，主进程改动会自动重建并重启窗口。
+- **dev server 地址不能写死 `127.0.0.1`**：Vite 的 host 默认是 `localhost`，IPv6 优先的机器上它只绑 `[::1]`，写死 IPv4 会连接被拒。`scripts/dev.mjs` 探 `localhost` / `127.0.0.1` / `[::1]` 三个候选，谁先应就用谁；探到已经有人在服务就直接复用，不再另起（`strictPort` 撞上会直接退出，表现是「命令跑完了但没有窗口」）。
+- **自检要挡「失败页也算加载完」**：加载错误时 Chromium 同样会触发 `did-finish-load`，不记一个 `loadFailed` 标记就会对着正在销毁的 webContents 跑断言，报出来的是 `Object has been destroyed` 而不是真正的失败原因。
+- **别用 `MainWindowHandle` 判断窗口有没有出来**：一个 Electron 进程同时拥有主窗口和 detached DevTools 时，.NET 的 `MainWindowHandle` 只会报其中一个，看上去就像「主窗口没显示」，据此改代码会白改一轮。要确认就用 `EnumWindows` 列可见顶层窗口，或者直接问用户。`main.ts` 把 `show()` 收进 `reveal()`、放在 `openDevTools` 之前，并加 3 秒兜底，是防另一个已知坑（`show: false` 时提前开 DevTools 可能不触发 `ready-to-show`），跟上面那个误判无关。
+- **字体列表只有一个来源：渲染进程的 `queryLocalFonts()`**；桌面壳只额外提供一本**中文名字典**（`listFontAliases`）。Chromium 只给英文家族名（`SimSun` 而不是「宋体」），中文名写在字体文件的 `name` 表里，只能问 DirectWrite 要——主进程用 Windows 自带的 WPF 字体集合（`[Windows.Media.Fonts]::SystemFontFamilies` 的 `FamilyNames`）读一遍，`fonts.ts` 里按平台缓存，非 Windows 或 PowerShell 被挡就返回空表，界面显示英文名。浏览器里没有词典，且 `queryLocalFonts` 要先授权。
+  - 别再走注册表：`HKLM\...\Fonts` 那份混着字重变体（428 条对 231 个家族），而且 `reg.exe` 按控制台代码页（中文 Windows 是 GBK）输出字节，按 UTF-8 解必乱码（`幼圆` → `��Բ`，真踩过两次）。这些坑随着那份名册一起删掉了。
+  - 判断中文字体、给候选排序都用**显示名**（有中文名用中文名），样式里存的仍是家族名——CSS 匹配以家族名为准。
 
 ## Coding Style & Naming Conventions
 
@@ -58,7 +82,7 @@ npm.cmd run cli -- render examples/sample-thesis.md --theme thesis-cn --out out.
 ## Testing Guidelines
 
 - vitest，用例放在 `packages/*/test/*.test.ts`，用 `describe` / `it` 描述**行为**而非实现。
-- UI 交互由 `node e2e/smoke.mjs` 兜住（当前 96 项：分页、跨页表格分片、题注与对象同页、公式排版与内联字体、公式样例在画廊与样式窗口里的渲染与居中、页眉页脚弹窗与域插入/样式入口、数字框增减箭头常驻与页边距框宽度、样式窗口下拉点别处收起、光标定位、样式编辑、行内与段落控件、布局与分隔条、文件菜单的悬停/固定展开、标题栏文件名就地重命名、文件保存（写回文件与退回下载两条路）、自动保存开关与状态栏措辞（「已保存 / 已自动保存」、排版途中「正在渲染」）、会话恢复（含文件名）、双向滚动同步、改动重排时预览不闪回文首/不空白/滚动条还原、重排时分页画布压在最上面、切回双栏不露旧版、大纲跳转与滚动高亮）。改了 UI 就同步改断言，别让断言失效成空转。
+- UI 交互由 `node e2e/smoke.mjs` 兜住（当前 101 项：分页、跨页表格分片、题注与对象同页、公式排版与内联字体、公式样例在画廊与样式窗口里的渲染与居中、页眉页脚弹窗与域插入/样式入口、数字框增减箭头常驻与页边距框宽度、字体候选与中西文两个槽（含西文栏不列中文字体）、组合框箭头位置、样式窗口下拉点别处收起、光标定位、样式编辑、行内与段落控件、布局与分隔条、文件菜单的悬停/固定展开、标题栏文件名就地重命名、文件保存（写回文件与退回下载两条路）、自动保存开关与状态栏措辞（「已保存 / 已自动保存」、排版途中「正在渲染」）、会话恢复（含文件名）、双向滚动同步、改动重排时预览不闪回文首/不空白/滚动条还原、重排时分页画布压在最上面、切回双栏不露旧版、大纲跳转与滚动高亮）。改了 UI 就同步改断言，别让断言失效成空转。
 - 新增内置样式包必须能通过 `validateTheme`（`presets.test.ts` 会兜住）。
 - 改动 CSS 编译或 HTML 渲染输出时同步更新断言，并说明预期变化。
 - 提交前至少跑 `npm.cmd test` 与 `npm.cmd run typecheck`；涉及 UI 再跑 `node e2e/smoke.mjs`。

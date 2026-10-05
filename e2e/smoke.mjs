@@ -385,10 +385,17 @@ async function main() {
     )
     check('当前结构的样式卡片自动高亮', true, `高亮：${activeCard}`)
 
-    // 4b. 字体框：只显示当前字体，下拉能选
+    // 4b. 字体框：功能区只放中文字体这一个框，下拉能选
     const ribbon = page.locator('.ribbon')
     await ribbon.getByRole('button', { name: '字体族候选' }).click()
     await page.waitForSelector('.combo-list', { timeout: 3000 })
+    const fontOptions = await page.locator('.combo-list [role="option"]').count()
+    const curatedMarked = await page.locator('.combo-list [role="option"] em', { hasText: '常用' }).count()
+    check(
+      '字体下拉列出候选并标出常用',
+      fontOptions >= 16 && curatedMarked >= 8,
+      `${fontOptions} 个候选，${curatedMarked} 个标注「常用」`,
+    )
     await page.getByRole('option', { name: 'SimHei' }).click()
     const headingFamily = await until(
       async () => {
@@ -400,7 +407,7 @@ async function main() {
       },
       { label: '字体下拉生效' },
     )
-    check('字体下拉可选并生效', true, headingFamily.split(',')[0])
+    check('功能区中文字体下拉可选并生效', true, headingFamily.split(',')[0])
 
     // 4c. 字号：一个控件里既能下拉也能直接输入，非法输入回退
     const sizeBox = ribbon.getByLabel('字号 pt', { exact: true })
@@ -637,18 +644,26 @@ async function main() {
     }, { label: '预览滚到文末', timeout: 10000 })
     const paneClip = await page.locator('.preview-pane').boundingBox()
     const paneShotBytes = (await page.screenshot({ clip: paneClip })).length
+    // 「正在渲染」可能只闪现几十毫秒，50ms 轮询会整段漏掉（这条断言以前就偶发假失败）；
+    // 盯 DOM 文本变化，只要出现过一次就算数。
+    await page.evaluate(() => {
+      window.__renderingSeen = false
+      const status = document.querySelector('.statusbar .page-status')
+      if (!status) return
+      const record = () => {
+        if (status.textContent.includes('正在渲染')) window.__renderingSeen = true
+      }
+      record()
+      new MutationObserver(record).observe(status, { childList: true, characterData: true, subtree: true })
+    })
     await page.locator('.source-pane .cm-content').click()
     await page.keyboard.press('End')
     await page.keyboard.type('x')
     let previewLowest = previewBeforeEdit
     let paneShotSmallest = paneShotBytes
-    let renderingLabelSeen = false
     for (let attempt = 0; attempt < 40; attempt += 1) {
       await page.waitForTimeout(50)
       previewLowest = Math.min(previewLowest, await previewTop())
-      if (!renderingLabelSeen) {
-        renderingLabelSeen = (await page.locator('.statusbar .page-status').innerText()).includes('正在渲染')
-      }
       // 顺带盯一眼画面：重排途中两块画布都不能「都不画」，否则那块区域会闪成灰底。
       if (attempt % 4 === 0) {
         paneShotSmallest = Math.min(paneShotSmallest, (await page.screenshot({ clip: paneClip })).length)
@@ -668,6 +683,7 @@ async function main() {
     // 换到显示之后必须还原，别把用户的滚动条弄没了。
     const activeScrollbarColor = await preview.locator('html').evaluate((element) => element.style.scrollbarColor)
     check('预览恢复显示后滚动条样式也还原', activeScrollbarColor === '', `scrollbarColor = "${activeScrollbarColor}"`)
+    const renderingLabelSeen = await page.evaluate(() => window.__renderingSeen === true)
     check('排版没排完时底部栏显示「正在渲染」', renderingLabelSeen, '完成后才换成「第 1 页，共 N 页」')
     const frameClasses = await page.evaluate(() => window.__frameClasses)
     check(
@@ -769,6 +785,57 @@ async function main() {
     check('窗口内按类别切换选项卡', paragraphTabVisible, '已切到「段落」类别')
 
     await page.getByRole('tab', { name: '字体', exact: true }).click()
+    const cjkPicker = page.locator('.style-dialog input[role="combobox"][aria-label="中文字体"]')
+    const latinPicker = page.locator('.style-dialog input[role="combobox"][aria-label="西文字体"]')
+    const chainCollapsed = await page
+      .locator('.style-dialog .advanced-block')
+      .first()
+      .evaluate((element) => element.open !== true)
+    check(
+      '样式窗口里中西文字体分开设置、回退链收进进阶项',
+      (await cjkPicker.count()) === 1 &&
+        (await latinPicker.count()) === 1 &&
+        chainCollapsed &&
+        (await latinPicker.inputValue()) === '使用中文字体',
+      '中西文两个下拉，西文默认「使用中文字体」，「进阶：回退链」默认收起',
+    )
+
+    // 箭头是绝对定位在组合框壳上的：输入框没跟着壳长就会被压回 150px，箭头飘到框外（真踩过）
+    const comboEdges = await page.locator('.style-dialog .font-primary-combo').first().evaluate((combo) => {
+      const right = (selector) => combo.querySelector(selector)?.getBoundingClientRect().right ?? -1
+      return { shell: combo.getBoundingClientRect().right, input: right('input'), toggle: right('.combo-toggle') }
+    })
+    check(
+      '组合框的箭头贴在输入框右边',
+      Math.abs(comboEdges.shell - comboEdges.input) < 1.5 && Math.abs(comboEdges.shell - comboEdges.toggle) < 1.5,
+      `壳 ${Math.round(comboEdges.shell)} / 输入 ${Math.round(comboEdges.input)} / 箭头 ${Math.round(comboEdges.toggle)}`,
+    )
+
+    // 窗口里把西文字体设成 Arial：应该写在回退链最前面，中文那项不受影响
+    await page.locator('.style-dialog').getByRole('button', { name: '西文字体候选' }).click()
+    await page.waitForSelector('.combo-list', { timeout: 3000 })
+    const westernLabels = await page.locator('.combo-list [role="option"] span').allTextContents()
+    check(
+      '西文字体候选里没有中文字体',
+      westernLabels.includes('Arial') && !westernLabels.includes('SimSun') && !westernLabels.includes('SimHei'),
+      `${westernLabels.length} 个候选：${westernLabels.slice(0, 4).join(' / ')} …`,
+    )
+    await page.getByRole('option', { name: 'Arial' }).click()
+    const latinFamily = await until(
+      async () => {
+        const family = await preview
+          .locator('[data-role="heading-1"]')
+          .first()
+          .evaluate((element) => getComputedStyle(element).fontFamily)
+        return family.includes('Arial') ? family : ''
+      },
+      { label: '西文字体生效' },
+    )
+    check(
+      '西文字体单独设置后排在链首、中文字体保留',
+      latinFamily.split(',')[0].trim() === 'Arial' && latinFamily.includes('SimHei'),
+      latinFamily.split(',').slice(0, 2).join(' / '),
+    )
     const sizeInput = page.locator('.style-dialog').getByLabel('字号 pt', { exact: true })
     await sizeInput.fill('26')
     await sizeInput.press('Enter')

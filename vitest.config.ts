@@ -14,6 +14,8 @@ export default defineConfig({
   },
   test: {
     environment: 'node',
-    include: ['packages/*/test/**/*.test.ts'],
+    // demo 里也有纯逻辑要单测（例如字体候选清单的合并与排序），
+    // 它们不碰 DOM，跟 packages 的用例用同一套 runner。
+    include: ['packages/*/test/**/*.test.ts', 'apps/demo/test/**/*.test.ts'],
   },
 })

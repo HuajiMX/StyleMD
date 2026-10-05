@@ -16,7 +16,11 @@
     "test:watch": "vitest",
     "typecheck": "tsc --noEmit",
     "build:math-css": "node scripts/build-math-css.mjs",
-    "cli": "tsx apps/cli/src/cli.ts"
+    "cli": "tsx apps/cli/src/cli.ts",
+    "desktop": "npm run dev -w @stylemd/desktop",
+    "desktop:build": "npm run build -w @stylemd/desktop",
+    "desktop:start": "npm run start -w @stylemd/desktop",
+    "desktop:smoke": "npm run smoke -w @stylemd/desktop"
   },
   "devDependencies": {
     "@types/node": "^22.10.2",
