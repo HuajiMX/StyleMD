@@ -1,4 +1,5 @@
-import { fontSlotsToChain, type ComputedRoleStyle } from '@stylemd/theme-schema'
+import { planFontFamily } from '@stylemd/core'
+import { cssRoleName, type ComputedRoleStyle, type ComputedStyles } from '@stylemd/theme-schema'
 import type { CSSProperties } from 'react'
 
 function pt(value: number): string {
@@ -10,6 +11,22 @@ function borderSide(side: { style?: string; widthPt?: number; color?: string } |
   return `${pt(side.widthPt ?? 1)} ${side.style ?? 'solid'} ${side.color ?? '#000000'}`
 }
 
+/** 样本用的生成家族名；与编译产物同名也无妨——它们在不同的文档里。 */
+export function specimenFaceName(role: string): string {
+  return `stylemd-font-${cssRoleName(role)}`
+}
+
+/**
+ * 样本要用的 `@font-face`，由宿主文档注入。
+ *
+ * 样式窗口与样式画廊里的样本是内联样式，拿不到编译产物里的 `@font-face`；
+ * 两个字体槽不同时不注入的话，样本里的中文会被西文槽那个中文字体接管，
+ * 和真实预览对不上（踩过：样本显示宋体、预览显示黑体）。
+ */
+export function specimenFontFaces(styles: ComputedStyles): string[] {
+  return Object.values(styles.roles).flatMap((role) => planFontFamily(role.font, specimenFaceName(role.role)).faces)
+}
+
 /**
  * 把计算样式转成 React 内联样式，用于样式管理器里的"实时样本"。
  * 这是刻意的重复实现：样本必须走独立于 CSS 编译器的路径，
@@ -17,7 +34,7 @@ function borderSide(side: { style?: string; widthPt?: number; color?: string } |
  */
 export function computedToInlineStyle(style: ComputedRoleStyle): CSSProperties {
   const css: CSSProperties = {
-    fontFamily: fontSlotsToChain(style.font).join(', '),
+    fontFamily: planFontFamily(style.font, specimenFaceName(style.role)).families.join(', '),
     fontSize: pt(style.font.sizePt),
     fontWeight: style.font.weight,
     fontStyle: style.font.italic ? 'italic' : 'normal',
@@ -51,7 +68,7 @@ export function computedToInlineStyle(style: ComputedRoleStyle): CSSProperties {
  */
 export function specimenStyle(style: ComputedRoleStyle, maxSizePt = 13): CSSProperties {
   return {
-    fontFamily: fontSlotsToChain(style.font).join(', '),
+    fontFamily: planFontFamily(style.font, specimenFaceName(style.role)).families.join(', '),
     fontSize: pt(Math.min(style.font.sizePt, maxSizePt)),
     fontWeight: style.font.weight,
     fontStyle: style.font.italic ? 'italic' : 'normal',

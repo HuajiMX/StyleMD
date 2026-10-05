@@ -31,6 +31,7 @@ import {
   type OpenedFile,
 } from './lib/document'
 import { startWidthDrag } from './lib/dragResize'
+import { specimenFontFaces } from './lib/inlineStyle'
 import { documentOutline, type OutlineItem } from './lib/outline'
 import { formatSavedAt, loadAutoSave, loadSession, saveAutoSave, saveSession } from './lib/session'
 import type { SourceEditorHandle } from './lib/editor/types'
@@ -181,6 +182,21 @@ export function App() {
   useEffect(() => { if (rendering.result) lastResult.current = rendering.result }, [rendering.result])
   const result = rendering.result ?? lastResult.current ?? fallbackResult
   const previewId = useMemo(() => crypto.randomUUID(), [result.html])
+
+  // 样式窗口与画廊里的字形样本是内联样式，用不到编译产物里的 @font-face；
+  // 把同一套规则注入宿主文档，样本才会和真实预览用同一个字体（见 planFontFamily）。
+  useEffect(() => {
+    const faces = specimenFontFaces(result.computed)
+    const existing = document.getElementById('stylemd-specimen-fonts')
+    if (faces.length === 0) {
+      existing?.remove()
+      return
+    }
+    const element = existing instanceof HTMLStyleElement ? existing : document.createElement('style')
+    element.id = 'stylemd-specimen-fonts'
+    element.textContent = faces.join('\n')
+    if (!existing) document.head.appendChild(element)
+  }, [result.computed])
 
   // 光标 → 结构角色。跨度用防抖后的正文计算，跟预览看到的内容保持一致；
   // 光标没落在任何结构上（比如在文件头的元数据里）就按正文段落处理。

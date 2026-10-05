@@ -7,7 +7,7 @@ import {
   type ComputedStyles,
   type PageFurniture,
 } from '@stylemd/theme-schema'
-import { CJK_RANGES, LATIN_RANGES, escapeCssString, localFontFace } from './font-faces'
+import { escapeCssString, planFontFamily } from './font-faces'
 
 export interface CompileCssOptions {
   /** 页眉页脚域里 {title} 的替换值。 */
@@ -42,14 +42,9 @@ interface FontSlots {
  * 相同时（含「西文跟随中文字体」）直接给回退链——输出更小，行为与旧版逐字一致。
  */
 function fontFamilyDeclaration(slots: FontSlots, faceName: string, faces: string[]): string | null {
-  const { latinFamily, cjkFamily, fallbackFamilies } = slots
-  if (latinFamily && cjkFamily && latinFamily !== cjkFamily) {
-    faces.push(localFontFace(faceName, latinFamily, LATIN_RANGES))
-    faces.push(localFontFace(faceName, cjkFamily, CJK_RANGES))
-    return `font-family: ${fontStack([faceName, ...fallbackFamilies])};`
-  }
-  const stack = [latinFamily || cjkFamily, ...fallbackFamilies].filter((family) => family.length > 0)
-  return stack.length > 0 ? `font-family: ${fontStack(stack)};` : null
+  const plan = planFontFamily(slots, faceName)
+  faces.push(...plan.faces)
+  return plan.families.length > 0 ? `font-family: ${fontStack(plan.families)};` : null
 }
 
 function borderDeclaration(side: 'top' | 'right' | 'bottom' | 'left', border: BorderSide | undefined): string[] {

@@ -860,6 +860,21 @@ async function main() {
       true,
       `A=${routing.latin}（Arial ${routing.arialA}，SimHei ${routing.simheiA}）/ 中=${routing.cjk}`,
     )
+
+    // 样式窗口里的样本走内联样式，拿不到编译产物里的 @font-face，必须自己注入同一套；
+    // 否则两个槽不同时样本会退回普通链，跟预览显示的不是同一个字体（真踩过）
+    const specimenFamily = await page
+      .locator('.style-dialog .sample-box > div')
+      .evaluate((element) => getComputedStyle(element).fontFamily)
+    const previewFamily = await preview
+      .locator('[data-role="heading-1"]')
+      .first()
+      .evaluate((element) => getComputedStyle(element).fontFamily)
+    check(
+      '样式窗口的样本与预览用同一套字体分派',
+      specimenFamily.split(',')[0].trim() === previewFamily.split(',')[0].trim(),
+      `样本 ${specimenFamily.split(',')[0]} / 预览 ${previewFamily.split(',')[0]}`,
+    )
     const sizeInput = page.locator('.style-dialog').getByLabel('字号 pt', { exact: true })
     await sizeInput.fill('26')
     await sizeInput.press('Enter')

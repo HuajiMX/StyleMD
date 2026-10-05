@@ -53,3 +53,32 @@ export function localFontFace(familyName: string, source: string, unicodeRange?:
   const range = unicodeRange ? ` unicode-range: ${unicodeRange};` : ''
   return `@font-face { font-family: "${escapeCssString(familyName)}"; src: local("${escapeCssString(source)}");${range} }`
 }
+
+export interface FontFamilyPlan {
+  /** 需要注入的 @font-face 规则；两个槽相同（或只有一个有效）时为空 */
+  faces: string[]
+  /** 该写进 font-family 的家族列表，空数组表示这一层没有字体可写 */
+  families: string[]
+}
+
+/**
+ * 两个槽不同时给出「一对 @font-face + 生成家族名」，相同时就是一条普通回退链。
+ *
+ * 编译产物（`compileCss`）与样式窗口里的字形样本共用它——样本走的是内联样式，
+ * 没有编译产物可用，只能自己把这对 `@font-face` 注入宿主文档，
+ * 否则样本里的中文会被西文槽那个中文字体接管，和真实预览对不上（踩过）。
+ */
+export function planFontFamily(slots: FontSlotSpec, faceName: string): FontFamilyPlan {
+  const { latinFamily, cjkFamily, fallbackFamilies } = slots
+  if (latinFamily && cjkFamily && latinFamily !== cjkFamily) {
+    return {
+      faces: [localFontFace(faceName, latinFamily, LATIN_RANGES), localFontFace(faceName, cjkFamily, CJK_RANGES)],
+      families: [faceName, ...fallbackFamilies],
+    }
+  }
+  return {
+    faces: [],
+    families: [latinFamily || cjkFamily, ...fallbackFamilies].filter((family) => family.length > 0),
+  }
+}
+import type { FontSlotSpec } from '@stylemd/theme-schema'
