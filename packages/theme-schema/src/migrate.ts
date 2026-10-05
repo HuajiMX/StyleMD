@@ -1,4 +1,5 @@
 import { DEFAULT_DOCUMENT_DEFAULTS, DEFAULT_PAGE } from './defaults'
+import { fontSlotsFromChain } from './fonts'
 import { CURRENT_SCHEMA_VERSION, type StyleTheme } from './types'
 import { validateTheme } from './validate'
 
@@ -10,6 +11,22 @@ export interface MigrationResult {
 
 function isPlainObject(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value)
+}
+
+/**
+ * 旧字体回退链 → 三个槽（西文 / 中文 / 尾部回退）。
+ *
+ * 不按版本号一刀切：凡是还带着 `family` 的（包括没声明 schemaVersion 的样式包）都折一次，
+ * 这个转换是幂等的。折回去能得到原链，所以迁移不改变渲染结果。
+ * 链本身不合法时把原值塞进 fallbackFamilies，交给 shape 校验报错，而不是悄悄丢掉。
+ */
+function migrateFontChain(font: Record<string, unknown>): Record<string, unknown> {
+  if (font.family === undefined) return font
+  const { family, ...rest } = font
+  const slots = Array.isArray(family) && family.every((item) => typeof item === 'string')
+    ? fontSlotsFromChain(family as string[])
+    : { fallbackFamilies: family }
+  return { ...rest, ...slots }
 }
 
 /**
@@ -48,6 +65,18 @@ export function migrateTheme(raw: unknown): MigrationResult {
   const defaults = isPlainObject(document.defaults) ? document.defaults : {}
   const styles = Array.isArray(raw.styles) ? raw.styles : []
 
+  const migratedDefaults: Record<string, unknown> = { ...defaults }
+  if (defaults.fontFamily !== undefined) {
+    const { fontFamily, ...rest } = migratedDefaults
+    const slots = Array.isArray(fontFamily) && fontFamily.every((item) => typeof item === 'string')
+      ? fontSlotsFromChain(fontFamily as string[])
+      : { fallbackFamilies: fontFamily }
+    Object.assign(migratedDefaults, rest, slots)
+  }
+  const migratedStyles = styles.map((style) =>
+    isPlainObject(style) && isPlainObject(style.font) ? { ...style, font: migrateFontChain(style.font) } : style,
+  )
+
   // v1 → v2：页眉页脚新增 distanceMm（距页面边缘的距离）。旧样式包没写过这个字段，
   // 这里补上默认值——不然工具带上两个距离框是空的，用户看不出默认排版是多少。
   // 迁移本身不需要用户确认，所以不产出提示。
@@ -80,13 +109,13 @@ export function migrateTheme(raw: unknown): MigrationResult {
       },
       defaults: {
         ...structuredClone(DEFAULT_DOCUMENT_DEFAULTS),
-        ...(defaults as Partial<StyleTheme['document']['defaults']>),
+        ...(migratedDefaults as Partial<StyleTheme['document']['defaults']>),
         ...(isPlainObject(defaults.lineHeight)
           ? { lineHeight: { ...DEFAULT_DOCUMENT_DEFAULTS.lineHeight, ...defaults.lineHeight } }
           : {}),
       },
     },
-    styles: structuredClone(styles) as StyleTheme['styles'],
+    styles: structuredClone(migratedStyles) as StyleTheme['styles'],
   }
 
   const validation = validateTheme(theme)

@@ -84,8 +84,8 @@ export function validateTheme(raw: unknown): ThemeValidationResult {
     }
   }
 
-  if (!Array.isArray(defaults.fontFamily) || defaults.fontFamily.length === 0) {
-    out.errors.push('document.defaults.fontFamily 必须是非空字体链')
+  if (!defaults.latinFamily && !defaults.cjkFamily && (defaults.fallbackFamilies?.length ?? 0) === 0) {
+    out.errors.push('document.defaults 至少要有一个字体槽（latinFamily / cjkFamily / fallbackFamilies）')
   }
   if (typeof defaults.fontSizePt !== 'number' || defaults.fontSizePt <= 0) {
     out.errors.push('document.defaults.fontSizePt 必须大于 0')

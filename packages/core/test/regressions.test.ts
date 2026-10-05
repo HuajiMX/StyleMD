@@ -19,7 +19,7 @@ describe('untrusted document and theme boundaries', () => {
 
   it.each([
     { font: { sizePt: '12; color:red' } },
-    { font: { family: [null] } },
+    { font: { fallbackFamilies: [null] } },
     { font: { sizePt: Infinity } },
     { paragraph: { align: 'left; background:url(https://example.invalid)' } },
     { background: { color: '</style><script>throw 1</script>' } },

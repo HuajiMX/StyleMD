@@ -7,6 +7,7 @@ import {
   type ComputedStyles,
   type PageFurniture,
 } from '@stylemd/theme-schema'
+import { CJK_RANGES, LATIN_RANGES, escapeCssString, localFontFace } from './font-faces'
 
 export interface CompileCssOptions {
   /** 页眉页脚域里 {title} 的替换值。 */
@@ -25,13 +26,30 @@ function round(value: number): number {
   return Math.round(value * 1000) / 1000
 }
 
-function escapeCssString(value: string): string {
-  return value.replace(/\\/g, '\\\\').replace(/"/g, '\\"').replace(/[<>\u0000-\u001f\u007f]/g, (char) => `\\${char.charCodeAt(0).toString(16)} `)
-}
-
 const GENERIC_FAMILIES = new Set(['serif', 'sans-serif', 'monospace', 'cursive', 'fantasy', 'system-ui', 'ui-serif', 'ui-sans-serif', 'ui-monospace', 'emoji', 'math', 'fangsong'])
 function fontStack(families: string[]): string {
   return families.map((family) => GENERIC_FAMILIES.has(family) ? family : `"${escapeCssString(family)}"`).join(', ')
+}
+
+interface FontSlots {
+  latinFamily: string
+  cjkFamily: string
+  fallbackFamilies: string[]
+}
+
+/**
+ * 两个槽不同时，用一对 `@font-face` 按字符区段分派（见 font-faces.ts）；
+ * 相同时（含「西文跟随中文字体」）直接给回退链——输出更小，行为与旧版逐字一致。
+ */
+function fontFamilyDeclaration(slots: FontSlots, faceName: string, faces: string[]): string | null {
+  const { latinFamily, cjkFamily, fallbackFamilies } = slots
+  if (latinFamily && cjkFamily && latinFamily !== cjkFamily) {
+    faces.push(localFontFace(faceName, latinFamily, LATIN_RANGES))
+    faces.push(localFontFace(faceName, cjkFamily, CJK_RANGES))
+    return `font-family: ${fontStack([faceName, ...fallbackFamilies])};`
+  }
+  const stack = [latinFamily || cjkFamily, ...fallbackFamilies].filter((family) => family.length > 0)
+  return stack.length > 0 ? `font-family: ${fontStack(stack)};` : null
 }
 
 function borderDeclaration(side: 'top' | 'right' | 'bottom' | 'left', border: BorderSide | undefined): string[] {
@@ -44,12 +62,10 @@ function borderDeclaration(side: 'top' | 'right' | 'bottom' | 'left', border: Bo
   return [`border-${side}: ${pt(width)} ${style} ${color};`]
 }
 
-function fontDeclarations(style: ComputedRoleStyle): string[] {
+function fontDeclarations(style: ComputedRoleStyle, faceName: string, faces: string[]): string[] {
   const out: string[] = []
-  if (style.font.family.length > 0) {
-    const stack = fontStack(style.font.family)
-    out.push(`font-family: ${stack};`)
-  }
+  const declaredFamily = fontFamilyDeclaration(style.font, faceName, faces)
+  if (declaredFamily) out.push(declaredFamily)
   out.push(`font-size: ${pt(style.font.sizePt)};`)
   out.push(`font-weight: ${style.font.weight};`)
   out.push(`font-style: ${style.font.italic ? 'italic' : 'normal'};`)
@@ -110,17 +126,27 @@ function counterForRole(role: string): string | undefined {
   return /^heading\.[1-3]$/.test(role) ? `stylemd-${cssRoleName(role)}` : undefined
 }
 
-function roleBlock(style: ComputedRoleStyle): string {
+/** 角色块 + 它用到的 @font-face；块为空（行内角色没声明任何字体）时不带出没用的 face。 */
+function roleBlock(style: ComputedRoleStyle): { css: string; faces: string[] } {
   const selector = `[data-role="${escapeCssString(cssRoleName(style.role))}"]`
   const counter = counterForRole(style.role)
   const inline = isInlineRole(style.role)
-  let fonts = fontDeclarations(style)
+  const faces: string[] = []
+  let fonts = fontDeclarations(style, `stylemd-font-${cssRoleName(style.role)}`, faces)
   if (inline && style.declaredFont) {
+    const declared = style.declaredFont
     const fields: Record<string, keyof NonNullable<ComputedRoleStyle['declaredFont']>> = {
-      'font-family': 'family', 'font-size': 'sizePt', 'font-weight': 'weight', 'font-style': 'italic',
+      'font-size': 'sizePt', 'font-weight': 'weight', 'font-style': 'italic',
       'text-decoration': 'underline', color: 'color', 'letter-spacing': 'letterSpacingPt',
     }
-    fonts = fonts.filter((line) => style.declaredFont?.[fields[line.split(':')[0]!]!] !== undefined)
+    fonts = fonts.filter((line) => {
+      const property = line.split(':')[0]!
+      // 字体族只要三个槽里声明过任意一个就算声明过
+      if (property === 'font-family') {
+        return declared.latinFamily !== undefined || declared.cjkFamily !== undefined || declared.fallbackFamilies !== undefined
+      }
+      return declared[fields[property]!] !== undefined
+    })
   }
   const declarations = [
     ...fonts,
@@ -128,7 +154,7 @@ function roleBlock(style: ComputedRoleStyle): string {
     ...boxDeclarations(style),
   ]
   // 行内角色未显式声明任何字体属性时，本就没有可写的东西；输出空规则只会让 CSS 变脏。
-  if (declarations.length === 0) return ''
+  if (declarations.length === 0) return { css: '', faces: [] }
   const blocks = [`${selector} {\n  ${declarations.join('\n  ')}\n}`]
 
   if (style.numbering.enabled && style.numbering.pattern && counter) {
@@ -140,7 +166,7 @@ function roleBlock(style: ComputedRoleStyle): string {
     // 标题本身已经带编号时，渲染器会打上 data-numbering="off"，这里就不再加编号。
     blocks.push(`${selector}:not([data-numbering="off"])::before {\n  ${before.join('\n  ')}\n}`)
   }
-  return blocks.join('\n')
+  return { css: blocks.join('\n'), faces }
 }
 
 /** 默认页边距；页边距盒与内容宽度都按它兜底，别在别处另写一份。 */
@@ -264,7 +290,16 @@ function pageBlock(styles: ComputedStyles, options: CompileCssOptions): string {
 
 export function compileCss(styles: ComputedStyles, options: CompileCssOptions = {}): string {
   const chunks: string[] = []
-  const bodyFontStack = fontStack(styles.defaults.fontFamily)
+  const faces: string[] = []
+  const bodyFamily = fontFamilyDeclaration(
+    {
+      latinFamily: styles.defaults.latinFamily ?? '',
+      cjkFamily: styles.defaults.cjkFamily ?? '',
+      fallbackFamilies: styles.defaults.fallbackFamilies ?? [],
+    },
+    'stylemd-font-body',
+    faces,
+  )
   const bodyLineHeight =
     styles.defaults.lineHeight.mode === 'fixed'
       ? pt(styles.defaults.lineHeight.value)
@@ -272,7 +307,7 @@ export function compileCss(styles: ComputedStyles, options: CompileCssOptions = 
   chunks.push(
     [
       'html, body { margin: 0; padding: 0; }',
-      `body {\n  font-family: ${bodyFontStack};\n  font-size: ${pt(styles.defaults.fontSizePt)};\n  line-height: ${bodyLineHeight};\n  color: ${styles.defaults.textColor};\n  background: ${styles.defaults.background ?? '#ffffff'};\n  counter-reset: stylemd-heading-1 stylemd-heading-2 stylemd-heading-3;\n}`,
+      `body {\n${bodyFamily ? `  ${bodyFamily}\n` : ''}  font-size: ${pt(styles.defaults.fontSizePt)};\n  line-height: ${bodyLineHeight};\n  color: ${styles.defaults.textColor};\n  background: ${styles.defaults.background ?? '#ffffff'};\n  counter-reset: stylemd-heading-1 stylemd-heading-2 stylemd-heading-3;\n}`,
       '[data-role="heading-1"] { counter-reset: stylemd-heading-2 stylemd-heading-3; }',
       '[data-role="heading-2"] { counter-reset: stylemd-heading-3; }',
       'img[data-role="image"] { max-width: 100%; }',
@@ -296,7 +331,11 @@ export function compileCss(styles: ComputedStyles, options: CompileCssOptions = 
   }
 
   for (const role of Object.values(styles.roles)) {
-    chunks.push(roleBlock(role))
+    const block = roleBlock(role)
+    faces.push(...block.faces)
+    chunks.push(block.css)
   }
+  // @font-face 必须在使用它的规则之前，统一放到最前面
+  if (faces.length > 0) chunks.unshift(faces.join('\n'))
   return chunks.join('\n\n')
 }

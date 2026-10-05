@@ -1,6 +1,21 @@
 # 字体：用 unicode-range 让中西文两个槽互不干扰（方案）
 
-日期：2026-10-05 ｜ 状态：待实施 ｜ 关联：`docs/plans/2026-10-04-font-slots.md`、AGENTS.md 架构约束 2/3
+日期：2026-10-05 ｜ 状态：**已实施** ｜ 关联：`docs/plans/2026-10-04-font-slots.md`、AGENTS.md 架构约束 2/3
+
+## 实施结果
+
+- `FontSpec` 换成 `latinFamily` / `cjkFamily` / `fallbackFamilies`，`schemaVersion` 2 → 3，
+  `migrate.ts` 按 `fontSlotsFromChain` 折算旧链（不按版本号一刀切，带 `family` 的就折，幂等）。
+- 中文字体判定从 `apps/demo/src/lib/fontChain.ts` 挪进 `packages/theme-schema/src/fonts.ts`，
+  迁移、编译、界面共用一份。
+- 编译器 `packages/core/src/style/font-faces.ts`：两槽不同时输出一对 `@font-face`
+  （`src: local(...)` + `unicode-range`），`@font-face` 统一排在最前面。
+- 界面：西文候选不再过滤中文字体，两个槽各写各的字段，不再做链上手术；
+  样式窗口里那行解释文字按用户要求删掉了。
+- 验证：`npm.cmd test` 153 项通过（含迁移折算、`@font-face` 输出两条新用例）；
+  `node e2e/smoke.mjs` 101/101，其中一条在**真实预览 iframe 里量宽度**验证分派：
+  `A=42.69`（与 Arial 一致，且不等于 SimHei 的 32）、`中=64`（与 SimHei 一致）；
+  `npm.cmd run desktop:smoke` 9/9。
 
 ## 要解决的问题
 
@@ -28,7 +43,7 @@
 2. unicode-range 真正多出来的是「两个槽与字形覆盖解耦」——西文槽可以放中文字体，
    以及把标点归属变成显式规则（现在是谁排前面谁说了算）。
 
-## 模型改动
+## 模型改动（原方案）
 
 把「从链里推导」换成显式字段：
 

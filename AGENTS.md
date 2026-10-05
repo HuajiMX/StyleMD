@@ -4,7 +4,7 @@ StyleMD 是 Markdown → PDF 的可视化样式管理器。动手前先读 `docs
 
 ## Project Structure & Module Organization
 
-- `packages/theme-schema/` — 样式模型：类型、角色注册表、校验、版本迁移。**纯数据，不得出现 CSS 字符串。**
+- `packages/theme-schema/` — 样式模型：类型、角色注册表、字体槽判定（`fonts.ts`）、校验、版本迁移。**纯数据，不得出现 CSS 字符串。**
 - `packages/core/` — 渲染内核：解析 → 角色化 → 样式解析 → HTML → CSS。**不得 import UI 或宿主 API。**
 - `packages/presets/` — 内置样式包；`packages/renderer-paged/` — Paged.js 集成（纯字符串进出），预览 iframe 里的生命周期脚本与 postMessage 协议也在这一层。
 - `apps/demo/` — React + Vite 工作台；`apps/cli/` — 命令行入口。
@@ -20,8 +20,11 @@ StyleMD 是 Markdown → PDF 的可视化样式管理器。动手前先读 `docs
 
 - **CSS 权重**：`.ribbon button` 这类通用规则的权重高于组件类，会把组件的内边距压掉。功能区里的组件样式要带前缀写，例如 `.ribbon .ribbon-tab`、`.rgroup .popover-trigger`、`.rgroup .seg-button`。
 - **组合框的输入框要跟着壳走**：`.field.inline input[type="text"]`（0,3,1）压过 `.combo input`（0,2,1），壳比 150px 宽时输入框不会跟着长，绝对定位的箭头就飘到框外面（字号那种窄壳看不出来，因为 flex 会把输入框压回去）。`styles.css` 里用 `.field.inline .combo input[type="text"] { width: 100% }` 兜住，e2e 有断言守着。
-- **字体分中西文两个槽**：模型里仍是一条回退链（`FontSpec.family`），`lib/fontChain.ts` 把它读写成一个「中文字体 + 西文字体」对——西文空串表示「使用中文字体」，写回时把西文插在第一个中文字体前面。功能区只放中文字体一个框（用 `ribbonFontValue` 取值，链里没有中文字体时退回主字体，避免代码角色显示成空框），中西文分开设只在样式窗口里。候选来自 `lib/fontCatalog.ts`：`queryLocalFonts`（桌面壳已放行权限，浏览器里要先授权、不主动弹框）→ 常用清单，常用的排在最前。
-- **西文槽不收中文字体**：中文字体自带中文字形，一旦排到链的最前面就会把中文也一起接管，等于把中文字体也改了——「西文用宋体、中文用微软雅黑」这种组合 CSS 表达不了，模型里也就存不下。所以西文下拉过滤掉中文字体，`writeFontWestern` 拿到中文字体时按「使用中文字体」处理，样式窗口里也写明了这条规则。
+- **字体是三个槽，不是回退链**：`FontSpec` 存 `latinFamily`（西文，空串 = 跟随中文字体）/ `cjkFamily`（中文）/ `fallbackFamilies`（尾部回退）。旧的 `family: string[]` 由 `migrate.ts` 折成三个槽（`fontSlotsFromChain`），折回去能得到原链，迁移不改变渲染结果。两槽相同（含「西文跟随中文」）时编译器直接给回退链；**两槽不同时生成一对 `@font-face`**：同一个生成名、各自 `src: local(...)` 加 `unicode-range` 按字符区段分派——「西文用宋体、中文用微软雅黑」因此成立，中文字体也能放进西文槽。
+  - `local()` 引用本机已装字体，不打包文件；没装时该 `@font-face` 整体失效，落到 `font-family` 里的下一个家族。预览 iframe 的 CSP（`font-src data:`）不拦它（实测过）。
+  - 区段表在 `packages/core/src/style/font-faces.ts`：拉丁段刻意挖掉 `—`(U+2014) 与 `…`(U+2026)，按中文习惯归给中日韩段。
+  - 改 `FontSpec` 结构必须同步 `schemaVersion` 与 `migrate.ts`（当前 v3）。
+- **功能区只放中文字体一个框**（`ribbonFontValue` 取值，没有中文字体时退回西文/回退家族，避免代码角色显示成空框），中西文分开设只在样式窗口里。候选来自 `lib/fontCatalog.ts`：`queryLocalFonts`（桌面壳已放行权限，浏览器里要先授权、不主动弹框）→ 常用清单，常用的排在最前。
 - **分隔条拖动**：指针走进预览 iframe 后，父文档收不到 `pointermove`（`setPointerCapture` 也不跨 iframe）。拖动期间给 `body` 加 `is-dragging-pane`，让 iframe `pointer-events: none`，见 `lib/dragResize.ts`。
 - **文本定位**：textarea 里按「行号 × 行高」估算会被软换行带偏，必须用 `lib/textareaScroll.ts` 的镜像元素 + Range 测量。大纲跳转用单点、滚动高亮用批量 `scrollTopsForOffsets`，都走这一套。
 - **滚动同步**：宿主与预览 iframe 之间走 postMessage（`stylemd:scroll` / `stylemd:scroll-report` / `stylemd:zoom` / `stylemd:print` / `stylemd:pagination`）。双向同步要用两层 `requestAnimationFrame` 做静默窗口，否则两边互相推着抖。

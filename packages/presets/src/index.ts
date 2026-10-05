@@ -1,14 +1,15 @@
 import {
   CURRENT_SCHEMA_VERSION,
+  fontSlotsFromChain,
   DEFAULT_FONT_STACK,
   DEFAULT_MONO_STACK,
   DEFAULT_SANS_STACK,
   type StyleTheme,
 } from '@stylemd/theme-schema'
 
-const SANS = DEFAULT_SANS_STACK
-const SERIF = DEFAULT_FONT_STACK
-const MONO = DEFAULT_MONO_STACK
+const SANS = fontSlotsFromChain(DEFAULT_SANS_STACK)
+const SERIF = fontSlotsFromChain(DEFAULT_FONT_STACK)
+const MONO = fontSlotsFromChain(DEFAULT_MONO_STACK)
 
 /**
  * 内置预设：既是开箱可用的模板，也是"样式包长什么样"的活文档。
@@ -30,7 +31,7 @@ export const techDocumentTheme: StyleTheme = {
       skipFurnitureOnFirstPage: true,
     },
     defaults: {
-      fontFamily: SANS,
+      ...SANS,
       fontSizePt: 11,
       lineHeight: { mode: 'multiple', value: 1.6 },
       textColor: '#1f2328',
@@ -42,34 +43,34 @@ export const techDocumentTheme: StyleTheme = {
     {
       role: 'heading.1',
       basedOn: 'body.text',
-      font: { family: SANS, sizePt: 20, weight: 700, color: '#0b3d91' },
+      font: { ...SANS, sizePt: 20, weight: 700, color: '#0b3d91' },
       paragraph: { spaceBeforePt: 22, spaceAfterPt: 12, keepWithNext: true },
       border: { bottom: { style: 'solid', widthPt: 1, color: '#d0d7de' } },
     },
     {
       role: 'heading.2',
       basedOn: 'body.text',
-      font: { family: SANS, sizePt: 16, weight: 600, color: '#0b3d91' },
+      font: { ...SANS, sizePt: 16, weight: 600, color: '#0b3d91' },
       paragraph: { spaceBeforePt: 16, spaceAfterPt: 8, keepWithNext: true },
     },
     {
       role: 'heading.3',
       basedOn: 'body.text',
-      font: { family: SANS, sizePt: 13.5, weight: 600 },
+      font: { ...SANS, sizePt: 13.5, weight: 600 },
       paragraph: { spaceBeforePt: 14, spaceAfterPt: 6, keepWithNext: true },
     },
     {
       role: 'heading.4',
       basedOn: 'body.text',
-      font: { family: SANS, sizePt: 12, weight: 600 },
+      font: { ...SANS, sizePt: 12, weight: 600 },
       paragraph: { spaceBeforePt: 12, spaceAfterPt: 4, keepWithNext: true },
     },
-    { role: 'heading.5', basedOn: 'body.text', font: { family: SANS, sizePt: 11, weight: 600 }, paragraph: { spaceBeforePt: 10, spaceAfterPt: 4, keepWithNext: true } },
-    { role: 'heading.6', basedOn: 'body.text', font: { family: SANS, sizePt: 11, weight: 600, color: '#57606a' }, paragraph: { spaceBeforePt: 10, spaceAfterPt: 4, keepWithNext: true } },
+    { role: 'heading.5', basedOn: 'body.text', font: { ...SANS, sizePt: 11, weight: 600 }, paragraph: { spaceBeforePt: 10, spaceAfterPt: 4, keepWithNext: true } },
+    { role: 'heading.6', basedOn: 'body.text', font: { ...SANS, sizePt: 11, weight: 600, color: '#57606a' }, paragraph: { spaceBeforePt: 10, spaceAfterPt: 4, keepWithNext: true } },
     {
       role: 'code.block',
       basedOn: 'body.text',
-      font: { family: MONO, sizePt: 9.5, color: '#24292f' },
+      font: { ...MONO, sizePt: 9.5, color: '#24292f' },
       paragraph: { lineHeight: { mode: 'fixed', value: 14 }, spaceAfterPt: 10 },
       background: { color: '#f6f8fa' },
       border: {
@@ -81,7 +82,7 @@ export const techDocumentTheme: StyleTheme = {
       },
       paddingPt: 8,
     },
-    { role: 'code.inline', font: { family: MONO, sizePt: 9.5, color: '#a40e26' }, background: { color: '#f0f2f5' }, paddingPt: 1 },
+    { role: 'code.inline', font: { ...MONO, sizePt: 9.5, color: '#a40e26' }, background: { color: '#f0f2f5' }, paddingPt: 1 },
     // 公式的字体与符号由 KaTeX 自己排；行间公式居中、行内公式随正文字号，都是角色自带兜底（见 roles.ts），
     // 主题这里只补段间距。
     { role: 'math.block', paragraph: { spaceBeforePt: 10, spaceAfterPt: 10 } },
@@ -152,7 +153,7 @@ export const thesisTheme: StyleTheme = {
       skipFurnitureOnFirstPage: true,
     },
     defaults: {
-      fontFamily: SERIF,
+      ...SERIF,
       fontSizePt: 12,
       lineHeight: { mode: 'fixed', value: 22 },
       textColor: '#000000',
@@ -164,27 +165,27 @@ export const thesisTheme: StyleTheme = {
     {
       role: 'heading.1',
       basedOn: 'body.text',
-      font: { family: SANS, sizePt: 18, weight: 700, color: '#000000' },
+      font: { ...SANS, sizePt: 18, weight: 700, color: '#000000' },
       paragraph: { align: 'center', spaceBeforePt: 24, spaceAfterPt: 18, keepWithNext: true, pageBreakBefore: true, firstLineIndentChars: 0 },
       numbering: { enabled: true, pattern: '第{n}章', gapPt: 6 },
     },
     {
       role: 'heading.2',
       basedOn: 'body.text',
-      font: { family: SANS, sizePt: 16, weight: 700 },
+      font: { ...SANS, sizePt: 16, weight: 700 },
       paragraph: { align: 'left', spaceBeforePt: 18, spaceAfterPt: 12, keepWithNext: true, firstLineIndentChars: 0 },
       numbering: { enabled: true, pattern: '{n}.', gapPt: 6 },
     },
     {
       role: 'heading.3',
       basedOn: 'body.text',
-      font: { family: SANS, sizePt: 14, weight: 700 },
+      font: { ...SANS, sizePt: 14, weight: 700 },
       paragraph: { align: 'left', spaceBeforePt: 12, spaceAfterPt: 6, keepWithNext: true, firstLineIndentChars: 0 },
       numbering: { enabled: true, pattern: '{n}.', gapPt: 6 },
     },
-    { role: 'heading.4', basedOn: 'body.text', font: { family: SANS, sizePt: 12, weight: 700 }, paragraph: { align: 'left', spaceBeforePt: 6, spaceAfterPt: 6, keepWithNext: true, firstLineIndentChars: 0 } },
-    { role: 'heading.5', basedOn: 'body.text', font: { family: SANS, sizePt: 12, weight: 700 }, paragraph: { firstLineIndentChars: 0, keepWithNext: true } },
-    { role: 'heading.6', basedOn: 'body.text', font: { family: SANS, sizePt: 10.5, weight: 700 }, paragraph: { firstLineIndentChars: 0, keepWithNext: true } },
+    { role: 'heading.4', basedOn: 'body.text', font: { ...SANS, sizePt: 12, weight: 700 }, paragraph: { align: 'left', spaceBeforePt: 6, spaceAfterPt: 6, keepWithNext: true, firstLineIndentChars: 0 } },
+    { role: 'heading.5', basedOn: 'body.text', font: { ...SANS, sizePt: 12, weight: 700 }, paragraph: { firstLineIndentChars: 0, keepWithNext: true } },
+    { role: 'heading.6', basedOn: 'body.text', font: { ...SANS, sizePt: 10.5, weight: 700 }, paragraph: { firstLineIndentChars: 0, keepWithNext: true } },
     {
       role: 'table',
       paragraph: { spaceBeforePt: 6, spaceAfterPt: 12, lineHeight: { mode: 'multiple', value: 1.3 } },
@@ -206,13 +207,13 @@ export const thesisTheme: StyleTheme = {
     {
       role: 'code.block',
       basedOn: 'body.text',
-      font: { family: MONO, sizePt: 9 },
+      font: { ...MONO, sizePt: 9 },
       paragraph: { lineHeight: { mode: 'fixed', value: 13 }, spaceAfterPt: 8, firstLineIndentChars: 0 },
       background: { color: '#f7f7f7' },
       border: { left: { style: 'solid', widthPt: 2, color: '#cccccc' } },
       paddingPt: 6,
     },
-    { role: 'code.inline', font: { family: MONO, sizePt: 10.5 } },
+    { role: 'code.inline', font: { ...MONO, sizePt: 10.5 } },
     // 与技术文档同理：居中来自角色兜底，主题只补段间距（正文的首行缩进不会带进来，math.block 不继承 body.text）。
     { role: 'math.block', paragraph: { spaceBeforePt: 12, spaceAfterPt: 12 } },
     { role: 'blockquote', basedOn: 'body.text', font: { sizePt: 10.5, color: '#333333' }, paragraph: { indentLeftPt: 24, spaceAfterPt: 8, firstLineIndentChars: 0 } },

@@ -22,7 +22,9 @@ type ResolvedPart = Omit<ComputedRoleStyle, 'role' | 'inheritanceChain'>
 function baseFromDefaults(defaults: DocumentDefaults): ResolvedPart {
   return {
     font: {
-      family: [...defaults.fontFamily],
+      latinFamily: defaults.latinFamily ?? '',
+      cjkFamily: defaults.cjkFamily ?? '',
+      fallbackFamilies: [...(defaults.fallbackFamilies ?? [])],
       sizePt: defaults.fontSizePt,
       weight: 400,
       italic: false,
@@ -60,7 +62,9 @@ export function mergeRoleStyle(base: ResolvedPart, style: RoleStyle): ResolvedPa
   const paragraph = style.paragraph ?? {}
   return {
     font: {
-      family: defined(font.family ? [...font.family] : undefined, base.font.family),
+      latinFamily: defined(font.latinFamily, base.font.latinFamily),
+      cjkFamily: defined(font.cjkFamily, base.font.cjkFamily),
+      fallbackFamilies: defined(font.fallbackFamilies ? [...font.fallbackFamilies] : undefined, base.font.fallbackFamilies),
       sizePt: defined(font.sizePt, base.font.sizePt),
       weight: defined(font.weight, base.font.weight),
       italic: defined(font.italic, base.font.italic),

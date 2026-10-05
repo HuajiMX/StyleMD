@@ -7,8 +7,9 @@ const theme = getBuiltInTheme('tech-document')!
 describe('resolveStyles', () => {
   it('叶子样式继承链根部的属性', () => {
     const computed = resolveStyles(theme)
-    // heading.1 只声明了 font.sizePt，字体族应当来自文档默认值
-    expect(computed.roles['heading.1']!.font.family).toEqual(theme.document.defaults.fontFamily)
+    // heading.1 只声明了 font.sizePt，字体槽应当来自文档默认值
+    expect(computed.roles['heading.1']!.font.cjkFamily).toBe(theme.document.defaults.cjkFamily)
+    expect(computed.roles['heading.1']!.font.fallbackFamilies).toEqual(theme.document.defaults.fallbackFamilies)
     expect(computed.roles['heading.1']!.font.sizePt).toBe(20)
   })
 

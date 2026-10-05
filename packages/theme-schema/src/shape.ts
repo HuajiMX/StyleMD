@@ -30,14 +30,18 @@ const color: Check = (v, p, e) => {
     e.push(`${p}：必须是颜色值，不能包含样式声明、URL 或 HTML`)
   }
 }
-const family: Check = (v, p, e) => {
+/** 回退链可以为空（只要其它槽有字体），但不能有空名字。 */
+const fallbackFamilies: Check = (v, p, e) => {
   array(string)(v, p, e)
-  if (Array.isArray(v) && (!v.length || v.some((f) => typeof f === 'string' && !f.trim()))) e.push(`${p}：字体链不能为空`)
+  if (Array.isArray(v) && v.some((f) => typeof f === 'string' && !f.trim())) e.push(`${p}：回退字体名不能为空`)
 }
 const lineHeight = object({ mode: choice('fixed', 'multiple'), value: number(0, true) }, ['mode', 'value'])
 const borderSide = object({ style: choice('none', 'solid', 'dashed', 'dotted', 'double'), widthPt: number(0), color })
 const furniture = object({ left: string, center: string, right: string, distanceMm: number(0), fontSizePt: number(0, true), color, borderTop: borderSide, borderBottom: borderSide })
-const font = object({ family, sizePt: number(0, true), weight: number(100), italic: boolean, underline: boolean, color, letterSpacingPt: number() })
+const font = object({
+  latinFamily: string, cjkFamily: string, fallbackFamilies,
+  sizePt: number(0, true), weight: number(100), italic: boolean, underline: boolean, color, letterSpacingPt: number(),
+})
 const paragraph = object({
   align: choice('left', 'center', 'right', 'justify'), lineHeight,
   spaceBeforePt: number(0), spaceAfterPt: number(0), firstLineIndentChars: number(0),
@@ -64,7 +68,13 @@ const page = object({
 })
 const theme = object({
   schemaVersion: number(1, false, true), id: string, name: string, description: string,
-  document: object({ page, defaults: object({ fontFamily: family, fontSizePt: number(0, true), lineHeight, textColor: color, background: color }, ['fontFamily', 'fontSizePt', 'lineHeight', 'textColor']) }, ['page', 'defaults']),
+  document: object({
+    page,
+    defaults: object(
+      { latinFamily: string, cjkFamily: string, fallbackFamilies, fontSizePt: number(0, true), lineHeight, textColor: color, background: color },
+      ['fontSizePt', 'lineHeight', 'textColor'],
+    ),
+  }, ['page', 'defaults']),
   styles: array(style),
 }, ['schemaVersion', 'id', 'name', 'document', 'styles'])
 

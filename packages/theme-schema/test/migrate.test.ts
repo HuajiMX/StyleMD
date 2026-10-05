@@ -50,4 +50,29 @@ describe('migrateTheme', () => {
   it('非对象输入抛错', () => {
     expect(() => migrateTheme('not a theme')).toThrow(/JSON 对象/)
   })
+
+  it('v2 的字体回退链折成西文 / 中文 / 回退三个槽', () => {
+    const { theme } = migrateTheme({
+      schemaVersion: 2,
+      id: 'x',
+      name: 'X',
+      document: { defaults: { fontFamily: ['Arial', 'SimSun', 'serif'] } },
+      styles: [{ role: 'body.text', font: { family: ['Times New Roman', 'Microsoft YaHei', 'serif'], sizePt: 12 } }],
+    })
+    expect(theme.document.defaults.latinFamily).toBe('Arial')
+    expect(theme.document.defaults.cjkFamily).toBe('SimSun')
+    expect(theme.document.defaults.fallbackFamilies).toEqual(['serif'])
+    const font = theme.styles[0]?.font
+    expect(font?.latinFamily).toBe('Times New Roman')
+    expect(font?.cjkFamily).toBe('Microsoft YaHei')
+    expect(font?.fallbackFamilies).toEqual(['serif'])
+    expect(font?.sizePt).toBe(12)
+    // 旧字段不能留下，否则派生出的两套值会打架
+    expect((font as unknown as Record<string, unknown>).family).toBeUndefined()
+  })
+
+  it('没声明版本号但还带着旧回退链的样式包同样会被折算', () => {
+    const { theme } = migrateTheme({ id: 'x', name: 'X', styles: [{ role: 'body.text', font: { family: ['SimSun'] } }] })
+    expect(theme.styles[0]?.font?.cjkFamily).toBe('SimSun')
+  })
 })

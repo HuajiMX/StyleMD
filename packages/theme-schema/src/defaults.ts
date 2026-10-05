@@ -1,5 +1,6 @@
 import type { DocumentDefaults, PageSetup, StyleTheme } from './types'
 import { CURRENT_SCHEMA_VERSION } from './types'
+import { fontSlotsFromChain } from './fonts'
 
 /** 默认字体链：优先使用可再分发的开源中文字体，再回退到系统字体。 */
 export const DEFAULT_FONT_STACK = [
@@ -38,7 +39,7 @@ export const DEFAULT_PAGE: PageSetup = {
 }
 
 export const DEFAULT_DOCUMENT_DEFAULTS: DocumentDefaults = {
-  fontFamily: DEFAULT_FONT_STACK,
+  ...fontSlotsFromChain(DEFAULT_FONT_STACK),
   fontSizePt: 12,
   lineHeight: { mode: 'multiple', value: 1.5 },
   textColor: '#1a1a1a',

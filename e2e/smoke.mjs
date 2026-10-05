@@ -811,30 +811,54 @@ async function main() {
       `壳 ${Math.round(comboEdges.shell)} / 输入 ${Math.round(comboEdges.input)} / 箭头 ${Math.round(comboEdges.toggle)}`,
     )
 
-    // 窗口里把西文字体设成 Arial：应该写在回退链最前面，中文那项不受影响
+    // 窗口里把西文字体设成 Arial：两个槽不同时，编译期用一对 @font-face 按字符区段分派
     await page.locator('.style-dialog').getByRole('button', { name: '西文字体候选' }).click()
     await page.waitForSelector('.combo-list', { timeout: 3000 })
     const westernLabels = await page.locator('.combo-list [role="option"] span').allTextContents()
     check(
-      '西文字体候选里没有中文字体',
-      westernLabels.includes('Arial') && !westernLabels.includes('SimSun') && !westernLabels.includes('SimHei'),
-      `${westernLabels.length} 个候选：${westernLabels.slice(0, 4).join(' / ')} …`,
+      '西文字体候选也允许选中文字体（两个槽互不干扰）',
+      westernLabels.includes('Arial') && westernLabels.includes('SimHei'),
+      `${westernLabels.length} 个候选，中文字体也在列表里`,
     )
     await page.getByRole('option', { name: 'Arial' }).click()
-    const latinFamily = await until(
+
+    // 在预览里实测：同一个元素的拉丁字符按 Arial 排、中文字符按上一步设的 SimHei 排。
+    // 这里不能只看 computed font-family——分成两槽时它是生成的家族名（stylemd-font-…），
+    // 真正分派由 @font-face 的 unicode-range 决定，只能量宽度。
+    const routing = await until(
       async () => {
-        const family = await preview
-          .locator('[data-role="heading-1"]')
-          .first()
-          .evaluate((element) => getComputedStyle(element).fontFamily)
-        return family.includes('Arial') ? family : ''
+        const measured = await preview.locator('[data-role="heading-1"]').first().evaluate((heading) => {
+          const doc = heading.ownerDocument
+          const measure = (family, text) => {
+            const span = doc.createElement('span')
+            span.style.cssText = 'position:absolute;visibility:hidden;font-size:64px;white-space:nowrap'
+            span.style.fontFamily = family
+            span.textContent = text
+            doc.body.appendChild(span)
+            const width = Math.round(span.getBoundingClientRect().width * 100) / 100
+            span.remove()
+            return width
+          }
+          const family = getComputedStyle(heading).fontFamily
+          return {
+            latin: measure(family, 'A'),
+            cjk: measure(family, '中'),
+            arialA: measure('Arial', 'A'),
+            simheiA: measure('SimHei', 'A'),
+            simheiCjk: measure('SimHei', '中'),
+          }
+        })
+        // 拉丁必须按 Arial 排（而不是被中文字体接管），中文按 SimHei 排
+        return measured.latin === measured.arialA && measured.latin !== measured.simheiA && measured.cjk === measured.simheiCjk
+          ? measured
+          : null
       },
-      { label: '西文字体生效' },
+      { label: '中西文按区段分派' },
     )
     check(
-      '西文字体单独设置后排在链首、中文字体保留',
-      latinFamily.split(',')[0].trim() === 'Arial' && latinFamily.includes('SimHei'),
-      latinFamily.split(',').slice(0, 2).join(' / '),
+      '中西文按 unicode-range 分派到各自的字体',
+      true,
+      `A=${routing.latin}（Arial ${routing.arialA}，SimHei ${routing.simheiA}）/ 中=${routing.cjk}`,
     )
     const sizeInput = page.locator('.style-dialog').getByLabel('字号 pt', { exact: true })
     await sizeInput.fill('26')

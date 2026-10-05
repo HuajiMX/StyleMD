@@ -25,7 +25,7 @@ import {
   resolveFontInput,
   useFontCatalog,
 } from '../lib/fontCatalog'
-import { FOLLOW_CJK_LABEL, isCjkFamily, readFontSlots, writeFontCjk, writeFontWestern } from '../lib/fontChain'
+import { FOLLOW_CJK_LABEL, currentSlots } from '../lib/fontChain'
 import { FONT_FAMILIES, FONT_WEIGHTS } from '../lib/typePresets'
 import { AlignSegmented } from './align-control'
 import { Combo, Field, FontSizeCombo, IconToggle, NumberInput, Row, Section, SelectInput, ToggleChip } from './fields'
@@ -157,13 +157,13 @@ export function StyleDialog(props: StyleDialogProps) {
   }
 
   const patch = (next: Partial<RoleStyle>) => props.onRoleChange(role, next)
-  const chain = explicit?.font?.family ?? resolved.font.family
-  const slots = readFontSlots(chain)
+  const slots = currentSlots(explicit?.font, resolved.font)
   const options = fontOptions(catalog)
-  // 西文那一栏只列拉丁字体：中文字体放进去会连中文字形一起接管，等于把中文字体也改了
-  const westernOptions = [
+  // 两个槽都列全部字体：编译期用 unicode-range 按字符区段分派，
+  // 所以西文槽放中文字体也成立（拉丁用它、中文仍走中文那一项）
+  const slotOptions = [
     { value: '', label: FOLLOW_CJK_LABEL, hint: '默认' },
-    ...options.filter((option) => !isCjkFamily(option.value)),
+    ...options,
   ]
   const allowedBasedOn = ROLES.filter(
     (item) => item.id !== role && (roleCategory(item.id) === roleCategory(role) || item.id === 'body.text'),
@@ -198,47 +198,42 @@ export function StyleDialog(props: StyleDialogProps) {
             <Field
               label="中文字体"
               inline
-              inherited={explicit?.font?.family === undefined || !slots.cjk}
+              inherited={explicit?.font?.cjkFamily === undefined}
               hint="中文（以及日韩）字符用这一项"
             >
               <Combo
                 className="font-primary-combo"
                 ariaLabel="中文字体"
-                inherited={explicit?.font?.family === undefined || !slots.cjk}
-                value={fontLabel(slots.cjk, catalog.aliases)}
+                inherited={explicit?.font?.cjkFamily === undefined}
+                value={fontLabel(slots.cjkFamily, catalog.aliases)}
                 options={options}
-                onPick={(family) => patch({ font: { family: writeFontCjk(chain, family) } })}
+                onPick={(family) => patch({ font: { cjkFamily: family } })}
                 onCommit={(text) => {
                   const family = resolveFontInput(text, catalog)
-                  if (family) patch({ font: { family: writeFontCjk(chain, family) } })
+                  if (family) patch({ font: { cjkFamily: family } })
                 }}
               />
             </Field>
             <Field
               label="西文字体"
               inline
-              inherited={explicit?.font?.family === undefined}
-              hint="拉丁字母与数字用这一项；默认「使用中文字体」，也就是不单独指定"
+              inherited={explicit?.font?.latinFamily === undefined}
+              hint="拉丁字母与半角标点用这一项；默认「使用中文字体」，也就是不单独指定"
             >
               <Combo
                 className="font-primary-combo"
                 ariaLabel="西文字体"
-                inherited={explicit?.font?.family === undefined}
-                value={slots.western ? fontLabel(slots.western, catalog.aliases) : FOLLOW_CJK_LABEL}
-                options={westernOptions}
-                onPick={(family) => patch({ font: { family: writeFontWestern(chain, family) } })}
+                inherited={explicit?.font?.latinFamily === undefined}
+                value={slots.latinFamily ? fontLabel(slots.latinFamily, catalog.aliases) : FOLLOW_CJK_LABEL}
+                options={slotOptions}
+                onPick={(family) => patch({ font: { latinFamily: family } })}
                 onCommit={(text) => {
-                  const family = resolveFontInput(text, catalog)
-                  patch({ font: { family: writeFontWestern(chain, family === FOLLOW_CJK_LABEL ? '' : family) } })
+                  const typed = text.trim()
+                  const family = typed === FOLLOW_CJK_LABEL ? '' : resolveFontInput(typed, catalog)
+                  patch({ font: { latinFamily: family } })
                 }}
               />
             </Field>
-          </Row>
-          <Row>
-            <span className="section-text">
-              西文一栏只列拉丁字体：中文字体自带中文字形，放到西文位置会连中文一起接管，等于同时改了中文字体。
-              想让中英文都用同一种，把它设到「中文字体」、西文保持「使用中文字体」即可。
-            </span>
           </Row>
           <Row>
             <span className="field-label">常用</span>
@@ -247,7 +242,7 @@ export function StyleDialog(props: StyleDialogProps) {
                 key={family}
                 type="button"
                 className="family-hint"
-                onClick={() => patch({ font: { family: writeFontCjk(chain, family) } })}
+                onClick={() => patch({ font: { cjkFamily: family } })}
               >
                 {fontLabel(family, catalog.aliases)}
               </button>
@@ -270,20 +265,20 @@ export function StyleDialog(props: StyleDialogProps) {
             <summary>进阶：回退链</summary>
             <Row>
               <Field
-                label="回退链"
+                label="其余回退"
                 inline
                 wide
-                inherited={explicit?.font?.family === undefined}
-                hint="逗号分隔，按顺序逐个尝试。中英混排时西文字体写前面、中文字体跟在后面，末尾留一个 serif / sans-serif。"
+                inherited={explicit?.font?.fallbackFamilies === undefined}
+                hint="逗号分隔，两个槽都没字体可用时按顺序尝试（例如末尾留一个 serif / sans-serif）。"
               >
                 <input
                   type="text"
                   aria-label="字体族回退链"
-                  value={chain.join(', ')}
+                  value={slots.fallbackFamilies.join(', ')}
                   onChange={(event) =>
                     patch({
                       font: {
-                        family: event.target.value
+                        fallbackFamilies: event.target.value
                           .split(',')
                           .map((item) => item.trim())
                           .filter(Boolean),

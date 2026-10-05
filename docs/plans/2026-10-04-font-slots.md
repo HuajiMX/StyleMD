@@ -1,5 +1,9 @@
 # 字体：候选来源与中西文两个槽
 
+> 后续：2026-10-05 起，字体从「一条回退链」改成 `latinFamily` / `cjkFamily` / `fallbackFamilies`
+> 三个槽，编译期用 `unicode-range` 分派——本文里「西文栏不列中文字体」等结论已被取代，
+> 见 `docs/plans/2026-10-05-font-unicode-range.md`。保留本文作为当时的决策与踩坑记录。
+
 日期：2026-10-04 ｜ 关联约束：架构约束 2「样式模型只描述数据」、app/demo 的 UI 约定
 
 ## 目标

@@ -1,4 +1,4 @@
-import type { ComputedRoleStyle } from '@stylemd/theme-schema'
+import { fontSlotsToChain, type ComputedRoleStyle } from '@stylemd/theme-schema'
 import type { CSSProperties } from 'react'
 
 function pt(value: number): string {
@@ -17,7 +17,7 @@ function borderSide(side: { style?: string; widthPt?: number; color?: string } |
  */
 export function computedToInlineStyle(style: ComputedRoleStyle): CSSProperties {
   const css: CSSProperties = {
-    fontFamily: style.font.family.join(', '),
+    fontFamily: fontSlotsToChain(style.font).join(', '),
     fontSize: pt(style.font.sizePt),
     fontWeight: style.font.weight,
     fontStyle: style.font.italic ? 'italic' : 'normal',
@@ -51,7 +51,7 @@ export function computedToInlineStyle(style: ComputedRoleStyle): CSSProperties {
  */
 export function specimenStyle(style: ComputedRoleStyle, maxSizePt = 13): CSSProperties {
   return {
-    fontFamily: style.font.family.join(', '),
+    fontFamily: fontSlotsToChain(style.font).join(', '),
     fontSize: pt(Math.min(style.font.sizePt, maxSizePt)),
     fontWeight: style.font.weight,
     fontStyle: style.font.italic ? 'italic' : 'normal',

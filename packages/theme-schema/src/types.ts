@@ -8,7 +8,7 @@
  */
 
 /** 样式包当前 schema 版本。修改模型结构时必须递增，并在 migrate.ts 中补一段迁移。 */
-export const CURRENT_SCHEMA_VERSION = 2
+export const CURRENT_SCHEMA_VERSION = 3
 
 export type LengthUnit = 'pt' | 'mm' | 'em' | 'ch' | 'px'
 
@@ -29,8 +29,14 @@ export interface BorderSpec {
 }
 
 export interface FontSpec {
-  /** 字体回退链，按顺序生效；中英文字体可分别放在链的前后位置。 */
-  family?: string[]
+  /**
+   * 西文字体：拉丁字母与半角标点用它。空串表示「跟随中文字体」，缺省表示继承。
+   */
+  latinFamily?: string
+  /** 中文字体：中日韩字符与全角标点用它。空串表示这一层不指定中文字体。 */
+  cjkFamily?: string
+  /** 上面两个槽都没字体可用时的尾部回退（serif / sans-serif 等），按顺序生效。 */
+  fallbackFamilies?: string[]
   sizePt?: number
   weight?: number
   italic?: boolean
@@ -116,7 +122,12 @@ export interface PageSetup {
 }
 
 export interface DocumentDefaults {
-  fontFamily: string[]
+  /** 正文的西文字体槽；空串表示跟随中文字体 */
+  latinFamily?: string
+  /** 正文的中文字体槽 */
+  cjkFamily?: string
+  /** 正文的尾部回退 */
+  fallbackFamilies?: string[]
   fontSizePt: number
   lineHeight: LineHeight
   textColor: string
@@ -140,7 +151,9 @@ export interface ComputedRoleStyle {
   role: string
   /** 运行期来源信息（不写入样式包），行内元素未声明的字体属性应继承所在段落。 */
   declaredFont?: FontSpec
-  font: Required<Pick<FontSpec, 'family' | 'sizePt' | 'weight' | 'italic' | 'color' | 'underline' | 'letterSpacingPt'>>
+  font: Required<
+    Pick<FontSpec, 'latinFamily' | 'cjkFamily' | 'fallbackFamilies' | 'sizePt' | 'weight' | 'italic' | 'color' | 'underline' | 'letterSpacingPt'>
+  >
   paragraph: Required<Pick<ParagraphSpec, 'align' | 'lineHeight' | 'spaceBeforePt' | 'spaceAfterPt' | 'firstLineIndentChars' | 'indentLeftPt' | 'indentRightPt' | 'keepWithNext' | 'pageBreakBefore' | 'widows' | 'orphans'>>
   border: BorderSpec
   background: { color?: string }

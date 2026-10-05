@@ -32,6 +32,28 @@ describe('compileCss', () => {
     expect(css).toContain('border-bottom: 1pt solid #d0d7de;')
   })
 
+  it('中西文两个槽相同时走普通回退链，不生成 @font-face', () => {
+    const css = compileCss(resolveStyles(tech))
+    expect(css).not.toContain('@font-face')
+    expect(css).toContain('font-family: "Source Han Sans SC"')
+  })
+
+  it('两个槽不同时生成一对带 unicode-range 的 @font-face 并按区段分派', () => {
+    const custom = structuredClone(tech)
+    custom.document.defaults.latinFamily = 'Arial'
+    custom.document.defaults.cjkFamily = 'SimSun'
+    const css = compileCss(resolveStyles(custom))
+    expect(css).toContain('@font-face')
+    expect(css).toContain('src: local("Arial")')
+    expect(css).toContain('src: local("SimSun")')
+    expect(css).toContain('unicode-range: U+0000-024F')
+    expect(css).toContain('unicode-range: U+2014, U+2026')
+    // 生成的家族名要排在 body 的回退链最前面
+    expect(css).toContain('font-family: "stylemd-font-body"')
+    // @font-face 必须在使用它的规则之前
+    expect(css.indexOf('@font-face')).toBeLessThan(css.indexOf('font-family: "stylemd-font-body"'))
+  })
+
   it('首行缩进按字符换算成 em，随字号缩放', () => {
     const css = compileCss(resolveStyles(thesis))
     expect(css).toContain('text-indent: 2em;')

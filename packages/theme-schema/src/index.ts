@@ -1,5 +1,6 @@
 export * from './types'
 export * from './roles'
+export * from './fonts'
 export * from './defaults'
 export * from './validate'
 export * from './migrate'
