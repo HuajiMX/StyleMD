@@ -1,5 +1,5 @@
 import { contextBridge, ipcRenderer } from 'electron'
-import { BRIDGE_KEY, CHANNELS, type StyleMdDesktopBridge } from './bridge'
+import { BRIDGE_KEY, CHANNELS, type PdfExportRequest, type PdfExportResult, type StyleMdDesktopBridge } from './bridge'
 
 /**
  * 只暴露一个薄对象。渲染进程拿不到 ipcRenderer 本身，
@@ -14,6 +14,8 @@ const bridge: StyleMdDesktopBridge = {
     node: process.versions.node ?? '',
   },
   listFontAliases: () => ipcRenderer.invoke(CHANNELS.listFontAliases) as Promise<Record<string, string>>,
+  exportPdf: (request: PdfExportRequest) =>
+    ipcRenderer.invoke(CHANNELS.exportPdf, request) as Promise<PdfExportResult>,
 }
 
 contextBridge.exposeInMainWorld(BRIDGE_KEY, bridge)

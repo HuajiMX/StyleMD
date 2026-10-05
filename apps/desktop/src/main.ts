@@ -1,9 +1,20 @@
 import { existsSync } from 'node:fs'
-import { readFile } from 'node:fs/promises'
+import { readFile, writeFile } from 'node:fs/promises'
 import path from 'node:path'
-import { app, BrowserWindow, ipcMain, protocol, session, shell } from 'electron'
-import { CHANNELS } from './bridge'
+import {
+  app,
+  BrowserWindow,
+  dialog,
+  ipcMain,
+  protocol,
+  session,
+  shell,
+  type IpcMainInvokeEvent,
+  type SaveDialogOptions,
+} from 'electron'
+import { CHANNELS, type PdfExportRequest, type PdfExportResult } from './bridge'
 import { listFontAliases } from './fonts'
+import { renderPdf, serveExportDocument } from './pdf'
 
 /**
  * 打包态用自定义协议喂渲染产物，而不是 loadFile：Vite 产出的是绝对路径
@@ -73,7 +84,11 @@ function toArrayBuffer(data: Buffer): ArrayBuffer {
 function registerAppProtocol(): void {
   const root = resolveRendererRoot()
   protocol.handle(APP_SCHEME, async (request) => {
-    const { pathname } = new URL(request.url)
+    const url = new URL(request.url)
+    // 导出用的文档由内存里的 token 表提供，不走磁盘：见 pdf.ts。
+    const exported = serveExportDocument(url)
+    if (exported) return exported
+    const { pathname } = url
     const relative = decodeURIComponent(pathname === '/' ? '/index.html' : pathname)
     // 自己算 MIME 而不是交给 net.fetch(file:)：ES module 对 Content-Type 挑剔，
     // 声明错会让 React 整包被拒收，白屏且只在控制台留一行错。
@@ -90,6 +105,64 @@ function registerAppProtocol(): void {
       return new Response('Not found', { status: 404 })
     }
   })
+}
+
+/**
+ * 导出请求来自渲染进程，按不可信输入处理：只认 html 与 suggestedName，
+ * 文件名顺手洗一遍，别让建议名里的路径分隔符把默认目录带跑。
+ */
+function parsePdfExportRequest(payload: unknown): PdfExportRequest | null {
+  if (typeof payload !== 'object' || payload === null) return null
+  const { html, suggestedName } = payload as { html?: unknown; suggestedName?: unknown }
+  if (typeof html !== 'string' || html.length === 0) return null
+  const stem = typeof suggestedName === 'string' ? suggestedName.replace(/[\\/:*?"<>|]+/g, '-').trim() : ''
+  return { html, suggestedName: stem.replace(/\.pdf$/i, '') || '未命名文档' }
+}
+
+/** 数 PDF 页数：`/Type /Page` 与 `/Count` 都够用，取大者（与 e2e/export-check.mjs 同一套判定）。 */
+function countPdfPages(buffer: Buffer): number | null {
+  const text = buffer.toString('latin1')
+  const plainPages = (text.match(/\/Type\s*\/Page[^s]/g) ?? []).length
+  if (plainPages > 0) return plainPages
+  const counts = [...text.matchAll(/\/Count\s+(\d+)/g)].map((match) => Number(match[1]))
+  return counts.length > 0 ? Math.max(...counts) : null
+}
+
+/** 自检不能弹系统对话框，固定写到临时目录，由自检自己核对产物。 */
+function smokeExportPath(): string {
+  return path.join(app.getPath('temp'), 'stylemd-smoke-export.pdf')
+}
+
+/**
+ * 「导出 PDF」：先在系统保存框里定好位置，再在隐藏窗口里分页 → `printToPDF` → 落盘。
+ * 先问位置再渲染是有意的：渲染要一两秒，让保存框等着，比让用户点完按钮半天没反应强。
+ */
+async function exportPdf(event: IpcMainInvokeEvent, payload: unknown): Promise<PdfExportResult> {
+  const request = parsePdfExportRequest(payload)
+  if (!request) return { status: 'error', message: '导出请求无效' }
+
+  let target: string
+  if (isSmoke) {
+    target = smokeExportPath()
+  } else {
+    const parent = BrowserWindow.fromWebContents(event.sender)
+    const options: SaveDialogOptions = {
+      title: '导出 PDF',
+      defaultPath: path.join(app.getPath('documents'), `${request.suggestedName}.pdf`),
+      filters: [{ name: 'PDF 文档', extensions: ['pdf'] }],
+    }
+    const result = parent ? await dialog.showSaveDialog(parent, options) : await dialog.showSaveDialog(options)
+    if (result.canceled || !result.filePath) return { status: 'cancelled' }
+    target = result.filePath
+  }
+
+  try {
+    const pdf = await renderPdf(APP_SCHEME, request.html)
+    await writeFile(target, pdf)
+    return { status: 'saved', filePath: target, bytes: pdf.length }
+  } catch (error) {
+    return { status: 'error', message: error instanceof Error ? error.message : String(error) }
+  }
 }
 
 function isInternalUrl(url: string): boolean {
@@ -199,10 +272,33 @@ async function runSmoke(win: BrowserWindow): Promise<void> {
       fontLabels = options.map((option) => option.textContent ?? '')
       fontOptionCount = options.length
     }
+    // 「导出 PDF」也在这里真跑一遍：渲染进程交 HTML → IPC → 隐藏窗口分页 → printToPDF → 落盘。
+    // 自检态不弹系统保存框（main.ts 的 exportPdf 分支），产物由主进程核对页数。
+    const exportButton = document.querySelector('.ribbon .titlebar-actions button.primary')
+    const exportLabel = exportButton ? (exportButton.textContent ?? '').trim() : null
+    let previewPages = 0
+    let exportStatus = null
+    let exportBytes = 0
+    // 正则里不写反斜杠转义：这段脚本要先过模板字符串，\\s 之类会被提前解掉（见下面的字体样例注释）。
+    const pageStatus = () => document.querySelector('.status-item.page-status')?.textContent ?? ''
+    await waitFor(() => /共 *[0-9]+ *页/.test(pageStatus()))
+    const pageMatch = /共 *([0-9]+) *页/.exec(pageStatus())
+    if (pageMatch) previewPages = Number(pageMatch[1])
+    const srcdoc = document.querySelector('iframe.preview-iframe')?.getAttribute('srcdoc') ?? ''
+    if (typeof bridge?.exportPdf === 'function' && srcdoc.length > 0) {
+      try {
+        const result = await bridge.exportPdf({ html: srcdoc, suggestedName: 'stylemd-smoke' })
+        exportStatus = result && result.status ? result.status : null
+        exportBytes = result && result.bytes ? result.bytes : 0
+      } catch (error) {
+        exportStatus = 'throw: ' + (error && error.message ? error.message : String(error))
+      }
+    }
     return {
       mounted,
       hasBridge: Boolean(bridge),
       isDesktop: bridge?.isDesktop === true,
+      hasExportPdf: typeof bridge?.exportPdf === 'function',
       platform: bridge?.platform ?? null,
       electron: bridge?.versions?.electron ?? null,
       fontCount: Array.isArray(fonts) ? fonts.length : -1,
@@ -221,15 +317,33 @@ async function runSmoke(win: BrowserWindow): Promise<void> {
       ),
       fontAliasCount: aliasCount,
       fontAliasCjk: aliasSample,
+      exportLabel,
+      previewPages,
+      exportStatus,
+      exportBytes,
       title: document.title,
     }
   })()`)) as Record<string, unknown>
+
+  // 核对落盘的 PDF 本体，而不是听渲染进程自报：页数必须和预览排出来的一致。
+  let smokePdf: { bytes: number; pages: number | null } | null = null
+  if (report.exportStatus === 'saved' && existsSync(smokeExportPath())) {
+    const data = await readFile(smokeExportPath())
+    smokePdf = { bytes: data.length, pages: countPdfPages(data) }
+  }
 
   const checks: [string, boolean][] = [
     ['渲染进程已挂载（自定义协议出的包能被执行）', report.mounted === true],
     ['preload 桥存在', report.hasBridge === true],
     ['桥标记为桌面环境', report.isDesktop === true],
     ['能读到 Electron 版本', typeof report.electron === 'string' && report.electron.length > 0],
+    ['桥开了 PDF 导出通道', report.hasExportPdf === true],
+    ['桌面壳里导出按钮改成「导出 PDF」', report.exportLabel === '导出 PDF'],
+    ['导出 PDF 落盘成功', report.exportStatus === 'saved' && (report.exportBytes as number) > 1000],
+    [
+      '导出 PDF 页数与预览一致',
+      smokePdf !== null && smokePdf.pages !== null && smokePdf.pages === Number(report.previewPages),
+    ],
     ['能列到系统字体', typeof report.fontCount === 'number' && report.fontCount > 0],
     ['字体下拉用的是系统字体', typeof report.fontOptionCount === 'number' && report.fontOptionCount >= 100],
     ['字体名没有解码乱码', report.fontLabelMojibake !== true],
@@ -238,7 +352,7 @@ async function runSmoke(win: BrowserWindow): Promise<void> {
   ]
 
   const failed = checks.filter(([, ok]) => !ok)
-  console.log(JSON.stringify({ ...report, checks: checks.map(([name, ok]) => ({ name, ok })) }, null, 2))
+  console.log(JSON.stringify({ ...report, pdf: smokePdf, checks: checks.map(([name, ok]) => ({ name, ok })) }, null, 2))
   for (const [name] of failed) console.error(`FAIL: ${name}`)
   console.log(failed.length === 0 ? `SMOKE OK (${checks.length}/${checks.length})` : `SMOKE FAILED (${checks.length - failed.length}/${checks.length})`)
   app.exit(failed.length === 0 ? 0 : 1)
@@ -277,6 +391,7 @@ async function main(): Promise<void> {
   session.defaultSession.setPermissionCheckHandler((_contents, permission) => ALLOWED_PERMISSIONS.has(permission))
 
   ipcMain.handle(CHANNELS.listFontAliases, () => listFontAliases())
+  ipcMain.handle(CHANNELS.exportPdf, exportPdf)
 
   openWindow(
     isSmoke ? wireSmoke : undefined,

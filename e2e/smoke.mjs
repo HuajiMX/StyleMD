@@ -177,6 +177,10 @@ async function main() {
     }, { label: '底部栏显示页数' })
     check('底部栏显示页数', true, statusText.trim())
 
+    // 浏览器里没有宿主通道，导出 PDF 仍旧只能走打印对话框——文案与行为都别被桌面壳那条路顺带改掉。
+    const browserPrintLabel = (await page.locator('.ribbon .titlebar-actions button.primary').innerText()).trim()
+    check('浏览器版导出按钮仍是「打印 / 导出 PDF」', browserPrintLabel === '打印 / 导出 PDF', browserPrintLabel)
+
     // 2. Paged.js 是否真的把内容切成了纸页
     const pageCount = await preview.locator('.pagedjs_page').count()
     check('Paged.js 在预览中完成分页', pageCount >= 2, `${pageCount} 页`)

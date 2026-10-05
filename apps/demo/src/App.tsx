@@ -31,6 +31,7 @@ import {
   type OpenedFile,
 } from './lib/document'
 import { startWidthDrag } from './lib/dragResize'
+import { desktopBridge } from './lib/desktop'
 import { specimenFontFaces } from './lib/inlineStyle'
 import { documentOutline, type OutlineItem } from './lib/outline'
 import { formatSavedAt, loadAutoSave, loadSession, saveAutoSave, saveSession } from './lib/session'
@@ -108,6 +109,8 @@ export function App() {
     session ? { at: session.savedAt, kind: 'auto' } : null,
   )
   const [autoSave, setAutoSave] = useState(() => loadAutoSave())
+  /** 桌面壳直接出 PDF 的进行中标记：导出期间按钮置灰，免得连点弹出两个保存框。 */
+  const [exportingPdf, setExportingPdf] = useState(false)
   /**
    * 预览里指针移动的次数。父文档看不出指针是不是移到了预览 iframe 上（事件与 :hover 都会冻结），
    * 只能靠预览 postMessage 通报；用计数而不是布尔，是因为「已经在预览里」之后再进去不会产生状态变化。
@@ -366,14 +369,6 @@ export function App() {
     URL.revokeObjectURL(url)
   }, [theme])
 
-  const handlePrint = useCallback(() => {
-    const spec = framesRef.current[activeSlotRef.current]
-    frameRefs[activeSlotRef.current].current?.contentWindow?.postMessage(
-      { type: 'stylemd:print', id: spec.id },
-      '*',
-    )
-  }, [frameRefs])
-
   const openDialog = useCallback((role: string) => setDialogRole(role), [])
 
   /**
@@ -505,6 +500,35 @@ export function App() {
     }
   }, [handleSaveDocumentAs, markdown, suggestedFileName])
 
+  /**
+   * 导出 PDF。
+   * 桌面壳里有宿主通道：把与预览同一份 HTML 交给主进程，隐藏窗口里跑完分页再 printToPDF，
+   * 保存位置由系统保存框决定（见 apps/desktop/src/pdf.ts）。
+   * 浏览器里没有这条通道，仍旧让预览调 `window.print()` 走打印对话框。
+   */
+  const handlePrint = useCallback(() => {
+    const bridge = desktopBridge()
+    if (bridge?.exportPdf) {
+      if (exportingPdf) return
+      setExportingPdf(true)
+      void bridge
+        .exportPdf({ html: previewHtml, suggestedName: fileStem(suggestedFileName) })
+        .then((result) => {
+          if (result.status === 'error') window.alert(`导出 PDF 失败：${result.message}`)
+        })
+        .catch((error: unknown) => {
+          window.alert(`导出 PDF 失败：${error instanceof Error ? error.message : String(error)}`)
+        })
+        .finally(() => setExportingPdf(false))
+      return
+    }
+    const spec = framesRef.current[activeSlotRef.current]
+    frameRefs[activeSlotRef.current].current?.contentWindow?.postMessage(
+      { type: 'stylemd:print', id: spec.id },
+      '*',
+    )
+  }, [exportingPdf, frameRefs, previewHtml, suggestedFileName])
+
   const roleCount = Object.keys(result.stats.counts).length
 
   return (
@@ -519,7 +543,14 @@ export function App() {
         onTabChange={setRibbonTab}
         autoDetect={autoDetect}
         status={{ roles: roleCount, warnings: result.warnings.length + validation.warnings.length, errors: validation.errors.length }}
-        canPrint={validation.ok && !rendering.error && markdown === debouncedMarkdown && readyId === previewId && pagedStatus === 'paged'}
+        canPrint={
+          validation.ok &&
+          !rendering.error &&
+          !exportingPdf &&
+          markdown === debouncedMarkdown &&
+          readyId === previewId &&
+          pagedStatus === 'paged'
+        }
         canUndo={history.length > 0}
         onUndo={() => {
           const previous = history.at(-1)

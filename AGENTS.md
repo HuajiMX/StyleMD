@@ -10,7 +10,7 @@ StyleMD 是 Markdown → PDF 的可视化样式管理器。动手前先读 `docs
 - `apps/demo/` — React + Vite 工作台；`apps/cli/` — 命令行入口。
   - `src/components/` — `Ribbon`（标题栏 / 选项卡 / 分组工具带）、`OutlinePanel`（大纲导航）、`SourcePane` / `PreviewPane`、`StatusBar`（全局底部栏）、`StyleDialog`（样式配置窗口）、`fields.tsx`（表单控件与组合框）、`icons.tsx`。
   - `src/lib/` — `session.ts`（会话存档）、`textareaScroll.ts`（光标与滚动定位）、`outline.ts`（目录）、`dragResize.ts`（分隔条）、`document.ts`（文档级操作）、`themeOps.ts`、`typePresets.ts`。
-- `apps/desktop/` — Electron 桌面壳，包同一个 demo 产物。`src/main.ts`（主进程：自定义协议、权限、IPC）、`src/preload.ts`（薄桥）、`src/bridge.ts`（桥的契约与频道名）、`src/fonts.ts`（字体中文名字典）、`scripts/*.mjs`（dev / build / start / smoke）。
+- `apps/desktop/` — Electron 桌面壳，包同一个 demo 产物。`src/main.ts`（主进程：自定义协议、权限、IPC）、`src/preload.ts`（薄桥）、`src/bridge.ts`（桥的契约与频道名）、`src/pdf.ts`（导出 PDF：隐藏窗口分页 + `printToPDF`）、`src/fonts.ts`（字体中文名字典）、`scripts/*.mjs`（dev / build / start / smoke）。
 - `e2e/` — 基于本机 Chromium 的端到端脚本，产物写入 `e2e/artifacts/`（已 gitignore）。
 - `examples/` — 示例文档；`docs/plans/` — 规划、验证结论、需求与参考图。
 
@@ -38,6 +38,7 @@ StyleMD 是 Markdown → PDF 的可视化样式管理器。动手前先读 `docs
 - **样式窗口**：可拖标题栏移动、可拖右下角缩放，外层只有透明挡板（不压暗底色但要挡住底层点击）；「预览」是每个选项卡表单末尾的一个分区，不要改回固定在窗口底部。
 - **标题栏**：正中是大字**文件名**（不含 `.md`，点开就地改，回车生效）+ 灰色小字**文档标题**。两者是两回事：文件名决定保存 / 下载用什么名字（`localStorage` 会话里的 `fileName`），文档标题写在前置元数据里、供页眉页脚域使用；「重命名」不再放在「文件」菜单里。
 - **文件写入**：优先 File System Access API（打开后「保存」写回原句柄），不支持时退回下载；改这一块看 `lib/document.ts`，别在组件里各写一套。
+- **导出 PDF**：桌面壳里点一下就出 PDF 并弹系统保存框，浏览器里仍是打印对话框；两条路都从 `App.tsx` 的 `handlePrint` 进出，交出去的 HTML 就是预览那份 `previewHtml`（同一个 `build()` 产物），别为导出另起一条渲染路径。宿主能力统一从 `lib/desktop.ts` 的 `desktopBridge()` / `canExportPdfDirectly()` 取，别在组件里各写一遍 `window.stylemdDesktop` 断言。
 
 ## Build, Test, and Development Commands
 
@@ -56,13 +57,14 @@ npm.cmd run cli -- render examples/sample-thesis.md --theme thesis-cn --out out.
 npm.cmd run desktop        # 桌面壳开发态窗口（复用已在跑的 dev server）
 npm.cmd run desktop:start  # 桌面壳打包态窗口（每次重建 demo 产物）
 npm.cmd run desktop:build  # 只打主进程与 preload 到 apps/desktop/dist
-npm.cmd run desktop:smoke  # 桌面壳无头自检（5 项：出包 / 桥 / 字体枚举）
+npm.cmd run desktop:smoke  # 桌面壳无头自检（13 项：出包 / 桥 / 直接导出 PDF / 字体枚举）
 ```
 
 ## 桌面壳约定（apps/desktop）
 
 - **打包态走 `stylemd://` 自定义协议**，不用 `loadFile`：Vite 产出的是绝对路径（`/assets/...`），`file://` 下必 404。协议注册成 `standard + secure`，渲染进程才在安全上下文里，`queryLocalFonts()`、剪贴板这类能力以后才用得上。
 - **自定义协议自己算 `Content-Type`**（`MIME_TYPES`）。ES module 对 MIME 挑剔，声明错了整个 bundle 被拒收，表现是白屏 + 控制台一行错，很容易误判成打包坏了。
+- **导出 PDF 走隐藏窗口 + `printToPDF`，不复用预览那块 iframe**：渲染进程把与预览同一份 HTML（`previewHtml`）经 `stylemd:pdf:export` 交给主进程，主进程把它挂在自定义协议的 `stylemd://export/<token>` 上（`src/pdf.ts` 里的内存 token 表，不写临时文件），开一个 `show: false` 的窗口加载它、轮询 `window.__stylemdPaged.status` 等分页跑完，再 `printToPDF` 写盘，位置由 `dialog.showSaveDialog` 决定。四个必须保持的点：隐藏窗口要 `backgroundThrottling: false`（隐藏窗口的 rAF 会被限流，而 Paged.js 每排一页都要等一帧，十页文档会从一秒拖到十几秒）；`printToPDF` 要 `preferCSSPageSize: true` + `margins: 0`（纸张与页边距只由主题编译出的 `@page` 决定——实测导出 PDF 的绘制起点 68px=18.00mm、内容宽 658px=174mm，与预设 `marginMm: 18` 完全对得上，再叠一层 Chromium 默认页边距会整体往里缩）；先弹保存框再渲染（渲染要一两秒，让保存框等着比按钮没反应强）；`printToPDF` 打的是整个 webContents，没有「只打某一个 iframe」的能力，所以别想直接把预览 iframe 打出来。浏览器版没有这条通道，仍是 `stylemd:print` → `window.print()`，`apps/demo` 用 `canExportPdfDirectly()` 区分（文案也随之在「打印 / 导出 PDF」与「导出 PDF」之间切换）。
 - **权限只放行 `local-fonts` 与 `clipboard-sanitized-write`**，其余一律拒。加新能力要同时改 `ALLOWED_PERMISSIONS` 与 `bridge.ts` 的契约，别在渲染进程里偷偷挂全局。
 - **preload 保持薄**：只 `contextBridge.exposeInMainWorld` 一个对象，不把 `ipcRenderer` 交出去；新能力必须在 `bridge.ts` 里显式开一个频道。
 - **窗口安全基线**：`contextIsolation: true`、`sandbox: true`、`nodeIntegration: false`；外链交给系统浏览器（`setWindowOpenHandler` + `will-navigate` 拦截）。
@@ -86,7 +88,7 @@ npm.cmd run desktop:smoke  # 桌面壳无头自检（5 项：出包 / 桥 / 字�
 ## Testing Guidelines
 
 - vitest，用例放在 `packages/*/test/*.test.ts`，用 `describe` / `it` 描述**行为**而非实现。
-- UI 交互由 `node e2e/smoke.mjs` 兜住（当前 102 项：分页、跨页表格分片、题注与对象同页、公式排版与内联字体、公式样例在画廊与样式窗口里的渲染与居中、页眉页脚弹窗与域插入/样式入口、数字框增减箭头常驻与页边距框宽度、字体候选与中西文两个槽（含按 unicode-range 分派的实测、样本与预览一致）、组合框箭头位置、样式窗口下拉点别处收起、光标定位、样式编辑、行内与段落控件、布局与分隔条、文件菜单的悬停/固定展开、标题栏文件名就地重命名、文件保存（写回文件与退回下载两条路）、自动保存开关与状态栏措辞（「已保存 / 已自动保存」、排版途中「正在渲染」）、会话恢复（含文件名）、双向滚动同步、改动重排时预览不闪回文首/不空白/滚动条还原、重排时分页画布压在最上面、切回双栏不露旧版、大纲跳转与滚动高亮）。改了 UI 就同步改断言，别让断言失效成空转。
+- UI 交互由 `node e2e/smoke.mjs` 兜住（当前 103 项：分页、跨页表格分片、题注与对象同页、公式排版与内联字体、公式样例在画廊与样式窗口里的渲染与居中、页眉页脚弹窗与域插入/样式入口、数字框增减箭头常驻与页边距框宽度、字体候选与中西文两个槽（含按 unicode-range 分派的实测、样本与预览一致）、组合框箭头位置、样式窗口下拉点别处收起、光标定位、样式编辑、行内与段落控件、布局与分隔条、文件菜单的悬停/固定展开、标题栏文件名就地重命名、文件保存（写回文件与退回下载两条路）、自动保存开关与状态栏措辞（「已保存 / 已自动保存」、排版途中「正在渲染」）、会话恢复（含文件名）、双向滚动同步、改动重排时预览不闪回文首/不空白/滚动条还原、重排时分页画布压在最上面、切回双栏不露旧版、大纲跳转与滚动高亮、浏览器版导出按钮文案）。改了 UI 就同步改断言，别让断言失效成空转。
 - 新增内置样式包必须能通过 `validateTheme`（`presets.test.ts` 会兜住）。
 - 改动 CSS 编译或 HTML 渲染输出时同步更新断言，并说明预期变化。
 - 提交前至少跑 `npm.cmd test` 与 `npm.cmd run typecheck`；涉及 UI 再跑 `node e2e/smoke.mjs`。

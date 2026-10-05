@@ -1,4 +1,5 @@
 import { useEffect, useSyncExternalStore } from 'react'
+import { desktopBridge } from './desktop'
 import { FONT_FAMILIES } from './typePresets'
 
 /**
@@ -35,10 +36,6 @@ interface FontDataLike {
 
 interface LocalFontWindow {
   queryLocalFonts?: () => Promise<FontDataLike[]>
-}
-
-interface DesktopWindow {
-  stylemdDesktop?: { listFontAliases?: () => Promise<Record<string, string>> }
 }
 
 const CURATED_SET = new Set(FONT_FAMILIES)
@@ -193,7 +190,7 @@ type SystemFonts =
   | { kind: 'denied' }
 
 async function readSystemFamilies(force: boolean): Promise<SystemFonts> {
-  const listFontAliases = (window as unknown as DesktopWindow).stylemdDesktop?.listFontAliases
+  const listFontAliases = desktopBridge()?.listFontAliases
   const queryLocalFonts = (window as unknown as LocalFontWindow).queryLocalFonts
 
   // 列表只有一个来源：渲染进程自己的 `queryLocalFonts()`——它就是系统名册
@@ -243,7 +240,7 @@ async function isLocalFontsGranted(): Promise<boolean> {
  */
 export function canRequestSystemFonts(): boolean {
   // 桌面壳里读字体不弹框，根本不需要这个入口
-  if ((window as unknown as DesktopWindow).stylemdDesktop?.listFontAliases) return false
+  if (desktopBridge()?.listFontAliases) return false
   return typeof (window as unknown as LocalFontWindow).queryLocalFonts === 'function'
 }
 

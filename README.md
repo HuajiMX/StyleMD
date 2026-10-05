@@ -35,7 +35,7 @@ node e2e/export-check.mjs # 导出路径检查：生成 PDF 并核对页眉页�
 npm.cmd run desktop        # 开发态窗口：复用已在跑的 dev server，没有就自己起一个
 npm.cmd run desktop:start  # 打包态窗口：重建 demo 产物后按自定义协议加载
 npm.cmd run desktop:build  # 只打主进程与 preload（输出 apps/desktop/dist）
-npm.cmd run desktop:smoke  # 无头自检：协议出包 / preload 桥 / 系统字体枚举
+npm.cmd run desktop:smoke  # 无头自检：协议出包 / preload 桥 / 直接导出 PDF / 系统字体枚举
 ```
 
 命令行（无需图形界面，证明核心库与宿主无关）：
@@ -100,9 +100,12 @@ Firefox / Safari 拿不到写入能力时退回下载 .md，行为与以前一�
 
 桌面壳：`apps/desktop` 用 Electron 把同一个 demo 产物包起来（预览与导出仍是同一份 `build()` 输出），
 主进程按 `contextIsolation` / `sandbox` 开、`nodeIntegration` 关的推荐配置运行，只经 preload 暴露一个薄桥
-`window.stylemdDesktop`（平台与版本信息、系统字体枚举）；打包态用注册为 secure 的 `stylemd://` 协议服务
+`window.stylemdDesktop`（平台与版本信息、系统字体枚举、导出 PDF）；打包态用注册为 secure 的 `stylemd://` 协议服务
 `apps/demo/dist`，既保住 Vite 的绝对路径资源，也让渲染进程处在安全上下文里——这是以后
-`queryLocalFonts()` 之类能力的前提。字体枚举在主进程侧走注册表（Windows）/ `fc-list`（mac、Linux）。
+`queryLocalFonts()` 之类能力的前提。壳里的「导出 PDF」不进打印对话框：渲染进程把与预览同一份 HTML
+交给主进程，主进程在隐藏窗口里跑完 Paged.js 分页再 `printToPDF`，最后弹系统保存框落盘（浏览器版仍是打印对话框）。
+字体枚举只有一个来源：渲染进程自己的 `queryLocalFonts()`；桌面壳另外用 Windows 自带的 WPF 字体集合
+（DirectWrite）补一本「英文家族名 → 中文名」的词典，拿不到就显示英文名。
 
 未实现（见规划中的里程碑）：目录与页码联动、图表编号与交叉引用、渲染输出侧的代码块高亮（Shiki）、脚注、图文环绕、
 公式编号自动递增与交叉引用（现阶段用 KaTeX 的 `\tag` 手工编号）、DOCX / Typst 后端、桌面壳的安装包（打包 / 签名 / 自动更新）。

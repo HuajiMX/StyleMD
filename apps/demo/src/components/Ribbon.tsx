@@ -4,6 +4,7 @@ import { StyleGallery } from './StyleGallery'
 import { FileMenu } from './FileMenu'
 import { FileHeading } from './FileHeading'
 import type { OpenedFile } from '../lib/document'
+import { canExportPdfDirectly } from '../lib/desktop'
 import {
   DefaultsGroup,
   EditGroup,
@@ -116,7 +117,8 @@ export function Ribbon(props: RibbonProps) {
             <span className="chip-sub">角色 {props.status.roles}</span>
           </span>
           <button type="button" className="primary" onClick={props.onPrint} disabled={!props.canPrint}>
-            打印 / 导出 PDF
+            {/* 桌面壳里点一下就直接出 PDF 并存盘（弹系统保存框），浏览器里只能走打印对话框。 */}
+            {canExportPdfDirectly() ? '导出 PDF' : '打印 / 导出 PDF'}
           </button>
         </div>
       </div>
