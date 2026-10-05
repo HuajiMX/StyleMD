@@ -1,9 +1,11 @@
 import {
+  PARAGRAPH_CONVENTION_FIELDS,
   ROLES,
   getRole,
   type ComputedRoleStyle,
   type ComputedStyles,
   type DocumentDefaults,
+  type ParagraphConventionField,
   type RoleStyle,
   type StyleTheme,
 } from '@stylemd/theme-schema'
@@ -18,6 +20,12 @@ import {
 export const BASE_ROLE = 'body.text'
 
 type ResolvedPart = Omit<ComputedRoleStyle, 'role' | 'inheritanceChain'>
+
+/**
+ * 版式约定字段（见 theme-schema 的 `PARAGRAPH_CONVENTION_FIELDS`）：对齐、左右缩进、首行缩进。
+ * 用集合查而不是每步遍历数组——这段在每个角色 × 每条链上都会走。
+ */
+const CONVENTION_FIELDS = new Set<string>(PARAGRAPH_CONVENTION_FIELDS)
 
 function baseFromDefaults(defaults: DocumentDefaults): ResolvedPart {
   return {
@@ -56,10 +64,19 @@ function defined<T>(value: T | undefined, fallback: T): T {
   return value === undefined ? fallback : value
 }
 
-/** 把一条角色样式叠加到已有结果上：只覆盖显式声明过的属性。 */
-export function mergeRoleStyle(base: ResolvedPart, style: RoleStyle): ResolvedPart {
+/**
+ * 把一条角色样式叠加到已有结果上：只覆盖显式声明过的属性。
+ *
+ * `mode = 'inherit'` 用在 `basedOn` 链上的祖先：只传家族属性，版式约定（对齐、左右缩进、首行缩进，
+ * 见 theme-schema 的 `PARAGRAPH_CONVENTION_FIELDS`）不传——否则「正文首行缩进 2 字符」会顺着继承边
+ * 漏给标题、列表、代码块。角色自己（'self'，默认值）与角色注册表里的兜底不受这条限制。
+ */
+export function mergeRoleStyle(base: ResolvedPart, style: RoleStyle, mode: 'self' | 'inherit' = 'self'): ResolvedPart {
   const font = style.font ?? {}
   const paragraph = style.paragraph ?? {}
+  /** 约定字段的合并：继承那一步留基值（等价于"本角色没声明"），基值只可能来自文档默认或角色兜底。 */
+  const convention = <T>(field: ParagraphConventionField, declared: T | undefined, baseValue: T): T =>
+    mode === 'inherit' && CONVENTION_FIELDS.has(field) ? baseValue : defined(declared, baseValue)
   return {
     font: {
       latinFamily: defined(font.latinFamily, base.font.latinFamily),
@@ -73,13 +90,13 @@ export function mergeRoleStyle(base: ResolvedPart, style: RoleStyle): ResolvedPa
       letterSpacingPt: defined(font.letterSpacingPt, base.font.letterSpacingPt),
     },
     paragraph: {
-      align: defined(paragraph.align, base.paragraph.align),
+      align: convention('align', paragraph.align, base.paragraph.align),
       lineHeight: defined(paragraph.lineHeight ? { ...paragraph.lineHeight } : undefined, base.paragraph.lineHeight),
       spaceBeforePt: defined(paragraph.spaceBeforePt, base.paragraph.spaceBeforePt),
       spaceAfterPt: defined(paragraph.spaceAfterPt, base.paragraph.spaceAfterPt),
-      firstLineIndentChars: defined(paragraph.firstLineIndentChars, base.paragraph.firstLineIndentChars),
-      indentLeftPt: defined(paragraph.indentLeftPt, base.paragraph.indentLeftPt),
-      indentRightPt: defined(paragraph.indentRightPt, base.paragraph.indentRightPt),
+      firstLineIndentChars: convention('firstLineIndentChars', paragraph.firstLineIndentChars, base.paragraph.firstLineIndentChars),
+      indentLeftPt: convention('indentLeftPt', paragraph.indentLeftPt, base.paragraph.indentLeftPt),
+      indentRightPt: convention('indentRightPt', paragraph.indentRightPt, base.paragraph.indentRightPt),
       keepWithNext: defined(paragraph.keepWithNext, base.paragraph.keepWithNext),
       pageBreakBefore: defined(paragraph.pageBreakBefore, base.paragraph.pageBreakBefore),
       widows: defined(paragraph.widows, base.paragraph.widows),
@@ -128,10 +145,11 @@ function computeRole(role: string, byRole: Map<string, RoleStyle>, defaults: Doc
     if (value !== undefined) Object.assign(declaredFont, { [key]: value })
   }
   // 从继承链的根部向叶子叠加，保证叶子的显式属性最终生效。
+  // 链上只有最末一段是"角色自己"：中间那些祖先按继承处理，版式约定不从它们那儿传下来。
   for (const id of [...chain].reverse()) {
     const style = byRole.get(id)
     if (style) {
-      resolved = mergeRoleStyle(resolved, style)
+      resolved = mergeRoleStyle(resolved, style, id === role ? 'self' : 'inherit')
       for (const [key, value] of Object.entries(style.font ?? {})) {
         if (value !== undefined) Object.assign(declaredFont, { [key]: value })
       }

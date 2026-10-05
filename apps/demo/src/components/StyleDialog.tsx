@@ -174,7 +174,7 @@ export function StyleDialog(props: StyleDialogProps) {
       : '文档默认值'
 
   /** 每个分区末尾都挂一条「回落到继承值」，符合表单里「这一块可以整个清掉」的预期。 */
-  const inheritRow = (group: keyof RoleStyle, label: string) => (
+  const inheritRow = (group: keyof RoleStyle, label: string, action = '回落到继承值') => (
     <Section title="继承" note={explicit?.[group] !== undefined ? `已显式声明${label}` : `继承自 ${inheritanceText}`}>
       <Row>
         <button
@@ -182,9 +182,9 @@ export function StyleDialog(props: StyleDialogProps) {
           className="mini ghost"
           disabled={explicit?.[group] === undefined}
           onClick={() => props.onClearGroup(role, group)}
-          title="清除这一组设置，回落到继承值"
+          title={`清除这一组设置，${action}`}
         >
-          ← 回落到继承值
+          ← {action}
         </button>
       </Row>
     </Section>
@@ -361,9 +361,9 @@ export function StyleDialog(props: StyleDialogProps) {
     ),
     paragraph: (
       <>
-        <Section title="常规">
+        <Section title="常规" note="版式约定：不随「基于」继承">
           <Row>
-            <Field label="对齐方式" inline inherited={explicit?.paragraph?.align === undefined}>
+            <Field label="对齐方式" inline>
               <AlignSegmented
                 value={explicit?.paragraph?.align ?? resolved.paragraph.align}
                 onChange={(value) => patch({ paragraph: { align: value } })}
@@ -372,35 +372,35 @@ export function StyleDialog(props: StyleDialogProps) {
           </Row>
         </Section>
 
-        <Section title="缩进" note="按字符数计的随字号缩放">
+        <Section title="缩进" note="按字符数计的随字号缩放；版式约定，不随「基于」继承">
           <Row>
-            <Field label="左侧" inline inherited={explicit?.paragraph?.indentLeftPt === undefined}>
+            <Field label="左侧" inline>
               <span className="field-control">
                 <NumberInput
                   value={explicit?.paragraph?.indentLeftPt ?? resolved.paragraph.indentLeftPt}
-                  inherited={explicit?.paragraph?.indentLeftPt === undefined}
+                  inherited={false}
                   ariaLabel="左缩进 pt"
                   onChange={(value) => patch({ paragraph: { indentLeftPt: value } })}
                 />
                 <span className="unit">pt</span>
               </span>
             </Field>
-            <Field label="右侧" inline inherited={explicit?.paragraph?.indentRightPt === undefined}>
+            <Field label="右侧" inline>
               <span className="field-control">
                 <NumberInput
                   value={explicit?.paragraph?.indentRightPt ?? resolved.paragraph.indentRightPt}
-                  inherited={explicit?.paragraph?.indentRightPt === undefined}
+                  inherited={false}
                   ariaLabel="右缩进 pt"
                   onChange={(value) => patch({ paragraph: { indentRightPt: value } })}
                 />
                 <span className="unit">pt</span>
               </span>
             </Field>
-            <Field label="首行缩进" inline inherited={explicit?.paragraph?.firstLineIndentChars === undefined}>
+            <Field label="首行缩进" inline>
               <span className="field-control">
                 <NumberInput
                   value={explicit?.paragraph?.firstLineIndentChars ?? resolved.paragraph.firstLineIndentChars}
-                  inherited={explicit?.paragraph?.firstLineIndentChars === undefined}
+                  inherited={false}
                   step={0.5}
                   ariaLabel="首行缩进 字符"
                   onChange={(value) => patch({ paragraph: { firstLineIndentChars: value } })}
@@ -495,7 +495,8 @@ export function StyleDialog(props: StyleDialogProps) {
             />
           </Row>
         </Section>
-        {inheritRow('paragraph', '段落')}
+        {/* 段落这一组里既有家族属性（行距、段间距）也有版式约定（对齐、缩进），清掉以后一个回继承、一个回默认 */}
+        {inheritRow('paragraph', '段落', '回落到继承值 / 默认值')}
       </>
     ),
     border: (

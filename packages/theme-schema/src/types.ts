@@ -67,6 +67,22 @@ export interface ParagraphSpec {
   orphans?: number
 }
 
+/**
+ * 段落属性分成两组，`basedOn` 继承只传前一组：
+ *
+ *  - **家族属性**（其余字段）：沿 `basedOn` 继承。这是"样式基于"的价值所在——改正文的行距、段间距、
+ *    字体，基于它的标题/列表跟着变。
+ *  - **版式约定**（下面这些）：**不随 `basedOn` 传递**，只认角色自己写的值，没写就用默认（对齐左、
+ *    缩进 0）。「正文首行缩进 2 字符、两端对齐」是一篇文档的排版约定，不是家族属性：标题、列表、
+ *    题注、代码块基于正文，图的是字体基线，不该跟着一起缩进、一起两端对齐。谁要缩进谁自己声明。
+ *
+ * 判定是"字段"而不是"角色"：`body.text` 照样可以声明约定（正文自己当然缩进 2 字符），只是这份声明
+ * 不再顺着继承边漏出去。将来加悬挂缩进，也归到这一组。
+ */
+export const PARAGRAPH_CONVENTION_FIELDS = ['align', 'firstLineIndentChars', 'indentLeftPt', 'indentRightPt'] as const
+
+export type ParagraphConventionField = (typeof PARAGRAPH_CONVENTION_FIELDS)[number]
+
 export interface NumberingSpec {
   enabled?: boolean
   /** 标题编号模板，{n} 为当前序号，例如「第{n}章」「{n}.」。 */

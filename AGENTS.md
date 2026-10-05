@@ -110,6 +110,7 @@ npm.cmd run desktop:smoke  # 桌面壳无头自检（17 项：出包 / 桥 / 无
 3. 预览与导出共用 `build()` 产出的 HTML，禁止另起一套渲染路径。
 4. 编辑器与预览的定位、滚动同步只走 `lib/textareaScroll.ts` 与 postMessage 协议，不要在别处另写一套估算逻辑。
 5. 公式由 `core` 的 remark-math → KaTeX 产出（`$...$` 行内、`$$...$$` 一律行间，单行 `$$` 也算，由 `promoteDisplayMath` 统一），KaTeX 样式与 woff2 字体内联在 `packages/core/src/render/math-css.generated.ts`（`npm.cmd run build:math-css` 重新生成）。别改成 CDN 或相对路径：预览是 srcdoc（没有自己的文档地址），离线导出的 HTML 也可能被搬到任意目录。
+6. **段落属性分两组：家族属性随 `basedOn` 继承，版式约定不继承。** 版式约定 = 对齐、左右缩进、首行缩进，清单在 `theme-schema` 的 `PARAGRAPH_CONVENTION_FIELDS`（将来加悬挂缩进也归它）。理由：标题、列表、题注、代码块基于正文，图的是字体基线；「正文首行缩进 2 字符、两端对齐」是一篇文档的排版约定，不该顺着继承边漏过去——漏了就得在每个角色上写一遍 `0` 挡，改一次正文要记着补十几处。执行在 `core` 的 `mergeRoleStyle(base, style, mode)`：`mode = 'inherit'`（`basedOn` 链上的祖先）只传家族属性，角色自己与角色注册表兜底照常。清单是规格：往 `PARAGRAPH_CONVENTION_FIELDS` 里加字段即改行为，但要在 `mergeRoleStyle` 里给它接一个 `convention(...)` 调用，`packages/core/test/resolve.test.ts` 按清单逐项守着。样式窗口里这四项不再标「继承自」，改为提示「版式约定：不随「基于」继承」。
 
 ## Security & Configuration Tips
 

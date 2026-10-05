@@ -601,6 +601,42 @@ async function main() {
     }, { label: '首行缩进开关生效' })
     check('首行缩进是开关图标按钮', true, `缩进 ${firstLineIndentRatio.toFixed(1)} 字符`)
 
+    // 4d-2. 版式约定（对齐 / 左右缩进 / 首行缩进）不随 basedOn 继承：
+    //       光标落到正文上开首行缩进，基于正文的三级标题不该跟着一起缩。
+    const bodyOffset = await page.evaluate(() => {
+      const lines = window.__stylemdEditor.getValue().split('\n')
+      const index = lines.findIndex((line) => line.startsWith('## 研究背景'))
+      return lines.slice(0, index + 2).reduce((sum, line) => sum + line.length + 1, 0) + 2
+    })
+    await setCaret(page, bodyOffset)
+    await until(
+      async () => ((await page.locator('.statusbar .locator').innerText()).includes('正文段落') ? true : ''),
+      { label: '光标落到正文段落' },
+    )
+    await ribbon.getByRole('button', { name: '首行缩进两字' }).click()
+    const indentAudit = await until(
+      async () => {
+        const body = await preview.locator('[data-role="body-text"]').first().evaluate((element) => {
+          const style = getComputedStyle(element)
+          return Number.parseFloat(style.textIndent) / Number.parseFloat(style.fontSize)
+        })
+        if (Math.abs(body - 2) > 0.05) return null
+        const heading = await preview
+          .locator('[data-role="heading-3"]')
+          .first()
+          .evaluate((element) => getComputedStyle(element).textIndent)
+        return { body, heading }
+      },
+      { label: '正文首行缩进 2 字符生效' },
+    )
+    check(
+      '版式约定不随「基于」继承：正文开首行缩进不会漏给标题',
+      indentAudit.heading === '0px',
+      `正文 ${indentAudit.body.toFixed(1)} 字符 / 三级标题 ${indentAudit.heading}`,
+    )
+    // 复原：后面的段落断言还在同一份样式包上做
+    await ribbon.getByRole('button', { name: '首行缩进两字' }).click()
+
     // 4e. 光标落到排在末尾的表格结构：画廊要自动滚过去，否则聚焦了也找不到
     const tableOffset = await lastLineStartOffset(page, '|')
     if (tableOffset < 0) throw new Error('示例文档里没有表格')
