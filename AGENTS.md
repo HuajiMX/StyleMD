@@ -39,6 +39,7 @@ StyleMD 是 Markdown → PDF 的可视化样式管理器。动手前先读 `docs
 - **标题栏**：正中是大字**文件名**（不含 `.md`，点开就地改，回车生效）+ 灰色小字**文档标题**。两者是两回事：文件名决定保存 / 下载用什么名字（`localStorage` 会话里的 `fileName`），文档标题写在前置元数据里、供页眉页脚域使用；「重命名」不再放在「文件」菜单里。
 - **文件写入**：优先 File System Access API（打开后「保存」写回原句柄），不支持时退回下载；改这一块看 `lib/document.ts`，别在组件里各写一套。
 - **导出 PDF**：桌面壳里点一下就出 PDF 并弹系统保存框，浏览器里仍是打印对话框；两条路都从 `App.tsx` 的 `handlePrint` 进出，交出去的 HTML 就是预览那份 `previewHtml`（同一个 `build()` 产物），别为导出另起一条渲染路径。宿主能力统一从 `lib/desktop.ts` 的 `desktopBridge()` / `canExportPdfDirectly()` 取，别在组件里各写一遍 `window.stylemdDesktop` 断言。
+- **表单控件的焦点环**：浏览器默认那圈（`-webkit-focus-ring-color` 的 auto 描边）一律换掉，写法在 `styles.css` 开头的「表单控件的焦点环」一段：`:focus` 时 `outline: none`，`:focus-visible` 时 `1px solid var(--accent)` + `outline-offset: -1px`。1px 且向内收是有意的——粗细和控件自己的描边一样，只在原位置把描边染成强调色，不往外多长一圈（页边距那排数字框挨得紧，外扩的环会和旁边的框叠在一起）。这是「换掉」不是「删掉」：文本框、下拉框按规范「聚焦即 `:focus-visible`」，鼠标点进去也有环；按钮用鼠标点不匹配 `:focus-visible`，于是点击不留痕、键盘 Tab 仍看得见焦点。两处例外要一起改：强调色填充的主按钮（`.primary`）往里收的环看不见，换更深的蓝；勾选框/单选的选中态就是强调色填充，环留在外面（`outline-offset: 0`）。`node e2e/smoke.mjs` 有两条断言守着（文本框的环是 1px/-1px、鼠标点按钮 `outline-style: none`）。
 
 ## Build, Test, and Development Commands
 

@@ -181,6 +181,40 @@ async function main() {
     const browserPrintLabel = (await page.locator('.ribbon .titlebar-actions button.primary').innerText()).trim()
     check('浏览器版导出按钮仍是「打印 / 导出 PDF」', browserPrintLabel === '打印 / 导出 PDF', browserPrintLabel)
 
+    // 1.5 表单控件的焦点环：浏览器默认那圈（`-webkit-focus-ring-color` 的 auto 描边）已经换成统一的
+    //     强调色实线：1px 粗细 + 向内收 1px，跟控件自己的描边一样粗、不往外溢出。文本框按规范
+    //     「聚焦即 :focus-visible」，鼠标点进去也有环；按钮用鼠标点不匹配 :focus-visible，
+    //     只剩 `:focus { outline: none }`——所以是「点击不留痕、键盘 Tab 看得见」。
+    const comboInput = page.locator('.ribbon .combo input[type="text"]').first()
+    await comboInput.click()
+    const inputRing = await comboInput.evaluate((node) => {
+      const style = getComputedStyle(node)
+      return `${style.outlineStyle} ${style.outlineWidth} ${style.outlineColor} / ${style.outlineOffset}`
+    })
+    check(
+      '文本框的焦点环是 1px 强调色实线且向内收（不再是浏览器默认那圈、也不外溢）',
+      inputRing === 'solid 1px rgb(47, 111, 237) / -1px',
+      inputRing,
+    )
+
+    const fileTabForAudit = page.getByRole('button', { name: '文件', exact: true })
+    await fileTabForAudit.click()
+    await page.waitForSelector('.file-panel', { timeout: 5000 })
+    const clickedButton = await page.evaluate(() => {
+      const node = document.activeElement
+      const style = node ? getComputedStyle(node) : null
+      return {
+        element: node instanceof HTMLElement ? `${node.tagName}.${node.className}` : String(node),
+        outline: style ? style.outlineStyle : '',
+      }
+    })
+    await page.keyboard.press('Escape')
+    check(
+      '鼠标点按钮不再画默认焦点环',
+      clickedButton.element.startsWith('BUTTON') && clickedButton.outline === 'none',
+      `${clickedButton.element} → outline-style: ${clickedButton.outline}`,
+    )
+
     // 2. Paged.js 是否真的把内容切成了纸页
     const pageCount = await preview.locator('.pagedjs_page').count()
     check('Paged.js 在预览中完成分页', pageCount >= 2, `${pageCount} 页`)

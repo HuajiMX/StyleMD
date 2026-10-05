@@ -52,6 +52,44 @@ body {
 
 .app { display: flex; flex-direction: column; height: 100vh; }
 
+/* ---------- 表单控件的焦点环 ---------- */
+/*
+ * 一律去掉浏览器默认的那圈焦点描边（Chromium 是 `-webkit-focus-ring-color` 的 `auto` 描边，
+ * 输入框、下拉框、按钮上形状还各不相同，点一下输入框就会跳出来），换成统一的强调色实线。
+ *
+ * 注意这是「换掉」不是「删掉」：`:focus-visible` 的环必须留着，否则键盘 Tab 时看不出焦点落在哪个控件上。
+ * Chromium 对文本框、下拉框这类「能打字/能选值」的控件，鼠标点进去也算 `:focus-visible`（按规范它们
+ * 永远匹配），所以输入框点一下也有环；按钮用鼠标点则不匹配 `:focus-visible`，只剩 `:focus` 的 none——
+ * 这正是我们要的「鼠标点击不留痕」。
+ *
+ * 写在文件靠前的位置而不是末尾：`.style-dialog { outline: none }` 那条权重相同、靠后生效，别被这里压掉。
+ */
+input:focus,
+select:focus,
+textarea:focus,
+button:focus {
+  outline: none;
+}
+input:focus-visible,
+select:focus-visible,
+textarea:focus-visible,
+button:focus-visible {
+  /* 1px + 向内收 1px：粗细和控件自己的描边一样，焦点只是把那圈换成强调色，
+     既不往外多长一圈（相邻控件挨得紧时不会和旁边的框叠在一起），也不留缝。 */
+  outline: 1px solid var(--accent);
+  outline-offset: -1px;
+}
+/* 勾选框与单选的选中态本身就是强调色填充，往里收的环会看不见，这两个留在外面画。 */
+input[type='checkbox']:focus-visible,
+input[type='radio']:focus-visible {
+  outline-offset: 0;
+}
+/* 强调色填充的主按钮同理：往里收的强调色环看不出，换成更深的蓝。 */
+.ribbon button.primary:focus-visible,
+.dialog-foot button.primary:focus-visible {
+  outline-color: #123a8f;
+}
+
 /* ---------- 顶部功能区 ---------- */
 .ribbon {
   flex: 0 0 auto;
