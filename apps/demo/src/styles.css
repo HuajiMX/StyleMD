@@ -473,22 +473,40 @@ input[type="color"] {
 .category-count { font-size: 10px; color: var(--muted); }
 .category-chip.active .category-count { color: var(--accent); }
 
-.style-gallery { display: flex; gap: 6px; padding: 1px 2px 2px; overflow-x: auto; }
+/* 「样式」栏跟「高亮配色」同一套做法：一整块白底卡片占满工具带高度，卡片之间用竖线分隔，
+   点一下就开该结构的样式窗口。卡片不再是各自带框的小白块——白块摞白块会糊成一片，
+   描边也跟底色抢注意力；白底只留一张，靠竖线切分，焦点落在谁身上就染那块底。 */
+/* 选择器都得带 .rgroup 前缀：`.ribbon button`（0,1,1）比 `.style-card`（0,1,0）权重高，
+   不带前缀的话底边、边框、内边距全被那条通用规则压掉，竖线会变成一条透明边。 */
+.rgroup .style-gallery {
+  display: flex; align-items: stretch; gap: 0;
+  flex: 1 1 auto; min-height: 0;
+  border: 1px solid var(--line); border-radius: 8px;
+  background: var(--panel); overflow-x: auto; overflow-y: hidden;
+  /* 这一条是「只涂透明、保留占位」那个约定的例外，别照搬：经典的横向滚动条是从**卡片内部**
+     的底边切走一条高度的，卡片、分隔线、选中底色全停在那条上面——滚动条没显现时它就是一段
+     白，看着像底边距比顶边距大一截（叠加式滚动条的系统上量不出来，真机上很明显）。
+     卡片自己就是滚动容器，滚动条没法挪到卡片外面，所以这里不留占位，横向翻页交给
+     StyleGallery 的滚轮处理；`.ribbon` / 预览 iframe 那两处的滚动条仍按约定保留占位。 */
+  scrollbar-width: none;
+}
 
-.style-card {
+.rgroup .style-card {
   position: relative;
-  display: flex; flex-direction: column; justify-content: space-between; gap: 4px;
-  min-width: 112px; max-width: 150px; height: 46px;
-  padding: 4px 7px;
-  border: 1px solid var(--line-strong); border-radius: 5px;
-  background: var(--panel); text-align: left; cursor: pointer;
+  display: flex; flex: 0 0 auto; flex-direction: column; justify-content: space-between; gap: 4px;
+  min-width: 112px; max-width: 150px;
+  padding: 5px 10px;
+  border: 0; border-right: 1px solid var(--line); border-radius: 0;
+  background: transparent; text-align: left; cursor: pointer;
   overflow: hidden;
 }
-.style-card:hover { border-color: var(--accent-line); background: var(--specimen); }
-.style-card.active { border-color: var(--accent); box-shadow: 0 0 0 2px var(--accent-soft); }
+.rgroup .style-card:last-child { border-right: 0; }
+.rgroup .style-card:hover { background: var(--panel-alt); }
+.rgroup .style-card.active { background: var(--accent-soft); }
 .style-card-sample { display: block; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .style-card-foot { display: flex; align-items: center; gap: 5px; font-size: 10px; color: var(--muted); }
 .style-card-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.style-card.active .style-card-name { color: var(--accent); font-weight: 600; }
 .style-card-dot { width: 6px; height: 6px; border-radius: 50%; background: var(--accent); flex: 0 0 auto; }
 .style-card-action {
   position: absolute; top: 4px; right: 5px;

@@ -1,4 +1,4 @@
-import { useEffect, useRef } from 'react'
+import { useEffect, useRef, type WheelEvent as ReactWheelEvent } from 'react'
 import { ROLES, type ComputedStyles, type StyleTheme } from '@stylemd/theme-schema'
 import { specimenStyle, singleLineSample } from '../lib/inlineStyle'
 import { explicitGroupCount } from '../lib/roleStyle'
@@ -67,10 +67,23 @@ interface StyleGalleryProps {
   onPick: (role: string) => void
 }
 
+/**
+ * 画廊自己那份滚动条被藏掉了（经典滚动条会从卡片内部切走一条高度，卡片和分隔线就停在那条
+ * 上面，见 styles.css 里 `.rgroup .style-gallery` 的注），所以滚轮得自己翻成横向——
+ * 不然鼠标用户翻不到排在后面的结构，只能靠移动光标把卡片带进视野。
+ * 只接管纵向滚轮：触控板报 deltaX 的横向手势仍走原生滚动，不去插一手。
+ */
+function scrollGalleryByWheel(event: ReactWheelEvent<HTMLDivElement>) {
+  const node = event.currentTarget
+  if (event.deltaY === 0 || node.scrollWidth <= node.clientWidth) return
+  // 行模式的浏览器（deltaMode 1）给的是一行几格，得换算成像素，否则滚一格只挪几个像素。
+  node.scrollLeft += event.deltaY * (event.deltaMode === 1 ? 16 : 1)
+}
+
 /** 横向排开的全部样式，用于「开始」选项卡。 */
 export function StyleGallery({ theme, computed, activeRole, onPick }: StyleGalleryProps) {
   return (
-    <div className="style-gallery">
+    <div className="style-gallery" onWheel={scrollGalleryByWheel}>
       {ROLES.map((role) => (
         <StyleCard
           key={role.id}

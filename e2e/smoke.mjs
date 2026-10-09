@@ -512,6 +512,66 @@ async function main() {
     )
     check('当前结构的样式卡片自动高亮', true, `高亮：${activeCard}`)
 
+    // 4a. 「样式」栏跟「高亮配色」同一套做法：白底只留一整张卡片，卡片之间用竖线切，
+    //     各自带框的小白块摞在白底上会糊成一片，选中态改为整块染底。
+    const stylePanelCard = await page.locator('.style-gallery').evaluate((node) => {
+      const gallery = getComputedStyle(node)
+      const first = node.querySelector('.style-card')
+      const active = node.querySelector('.style-card.active')
+      const firstStyle = getComputedStyle(first)
+      return {
+        background: gallery.backgroundColor,
+        radius: gallery.borderRadius,
+        border: gallery.borderTopWidth,
+        scrollbarWidth: gallery.scrollbarWidth,
+        // 经典滚动条会从卡片内部切走一条高度，卡片与分隔线就停在那条上面。
+        gutter: node.offsetHeight - node.clientHeight - Number.parseFloat(gallery.borderTopWidth) - Number.parseFloat(gallery.borderBottomWidth),
+        cardHeight: first.getBoundingClientRect().height,
+        contentHeight: node.clientHeight,
+        segmentBorder: firstStyle.borderTopWidth,
+        divider: firstStyle.borderRightWidth,
+        dividerColor: firstStyle.borderRightColor,
+        activeBackground: getComputedStyle(active).backgroundColor,
+        activeName: getComputedStyle(active.querySelector('.style-card-name')).color,
+      }
+    })
+    check(
+      '「样式」栏是一整块白底卡片，卡片之间用竖线分隔',
+      stylePanelCard.background === 'rgb(255, 255, 255)' &&
+        stylePanelCard.radius === '8px' &&
+        stylePanelCard.border === '1px' &&
+        stylePanelCard.segmentBorder === '0px' &&
+        Number.parseFloat(stylePanelCard.divider) >= 1 &&
+        stylePanelCard.dividerColor === 'rgb(223, 228, 236)' &&
+        stylePanelCard.activeBackground !== stylePanelCard.background &&
+        stylePanelCard.activeName === 'rgb(47, 111, 237)',
+      `底 ${stylePanelCard.background} / 圆角 ${stylePanelCard.radius} / 框 ${stylePanelCard.border} / 卡片框 ${stylePanelCard.segmentBorder} / 分隔线 ${stylePanelCard.divider} ${stylePanelCard.dividerColor} / 选中底 ${stylePanelCard.activeBackground} / 选中名 ${stylePanelCard.activeName}`,
+    )
+    // 卡片必须撑满整张白底卡片：留出滚动条占位的话，卡片、分隔线和选中底色会在卡片底部
+    // 缩回去一条，看着像底边距比顶边距大一截。
+    check(
+      '样式卡片撑满整张白底卡片，不为滚动条留底部占位',
+      stylePanelCard.gutter === 0 &&
+        stylePanelCard.scrollbarWidth === 'none' &&
+        Math.abs(stylePanelCard.cardHeight - stylePanelCard.contentHeight) <= 1,
+      `占位 ${stylePanelCard.gutter}px / scrollbar-width ${stylePanelCard.scrollbarWidth} / 卡片 ${stylePanelCard.cardHeight}px vs 卡片内容高 ${stylePanelCard.contentHeight}px`,
+    )
+
+    // 藏了滚动条就得自己接管滚轮：鼠标用户得能把后面的结构翻出来。
+    await page.locator('.style-gallery').hover()
+    await page.mouse.wheel(0, 240)
+    const wheelScroll = await until(
+      async () => {
+        const left = await page.locator('.style-gallery').evaluate((node) => Math.round(node.scrollLeft))
+        return left > 0 ? left : 0
+      },
+      { label: '滚轮把画廊横向翻过去' },
+    )
+    check('画廊用滚轮也能翻到后面的结构', wheelScroll > 0, `滚轮后 scrollLeft=${wheelScroll}px`)
+    await page.locator('.style-gallery').evaluate((node) => {
+      node.scrollLeft = 0
+    })
+
     // 4b. 字体框：功能区只放中文字体这一个框，下拉能选
     const ribbon = page.locator('.ribbon')
     await ribbon.getByRole('button', { name: '字体族候选' }).click()
