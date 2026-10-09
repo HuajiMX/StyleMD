@@ -59,6 +59,7 @@ import {
   CELL_ROLE,
   HEADER_ROLE,
   PRESET_LABELS,
+  TABLE_ROLE,
   applyBorderPreset,
   currentLine,
   presetOf,
@@ -871,7 +872,12 @@ function TableBorderGroup({ ctx }: { ctx: TableEditContext }) {
   )
 }
 
-/** 样式：表头 / 内容单元格的样式窗口入口，外加两处的底纹色。 */
+/**
+ * 样式：表格 / 表头 / 内容单元格的样式窗口入口，外加两处底纹。
+ *
+ * 表格那三个结构角色不再摆进「开始」页的结构画廊（光标进表格就切到这一页），所以这里的
+ * 「表格样式…」是 `table` 角色（整表盒子的字体基线、段前段后间距、分页控制）的唯一入口。
+ */
 function TableStyleGroup({ ctx }: { ctx: TableEditContext }) {
   const panels = [
     { role: HEADER_ROLE, label: '表头', btn: '表头样式…' },
@@ -880,6 +886,9 @@ function TableStyleGroup({ ctx }: { ctx: TableEditContext }) {
   return (
     <RibbonGroup label="样式" note="表头与内容单元格" className="table-group">
       <div className="rgroup-row">
+        <button type="button" className="furniture-edit" onClick={() => ctx.onOpenDialog(TABLE_ROLE)}>
+          表格样式…
+        </button>
         {panels.map((panel) => (
           <button key={panel.role} type="button" className="furniture-edit" onClick={() => ctx.onOpenDialog(panel.role)}>
             {panel.btn}

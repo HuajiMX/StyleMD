@@ -512,14 +512,19 @@ async function main() {
     )
     check('当前结构的样式卡片自动高亮', true, `高亮：${activeCard}`)
 
-    // 4a0. 页眉页脚不是文档结构（Markdown 里没有这种节点），排版入口在「页面」页的
-    //      「页眉页脚」组，不该在结构画廊里再摆一张卡片。
+    // 4a0. 画廊只摆「开始」页有入口意义的结构：页眉页脚是页面装饰（入口在「页面」页），
+    //      表格 / 表头单元格 / 表格单元格的样式都在「表格」选项卡里（跟着光标出现），
+    //      这几类都不该在结构画廊里再摆卡片；表题是普通段落，仍要留着。
     const galleryLabels = await page
       .locator('.style-card')
       .evaluateAll((nodes) => nodes.map((node) => node.getAttribute('aria-label')))
     check(
-      '结构画廊里没有页眉页脚',
-      galleryLabels.length > 0 && !galleryLabels.includes('页眉') && !galleryLabels.includes('页脚'),
+      '结构画廊里没有页眉页脚与表格相关结构（表题保留）',
+      galleryLabels.length > 0 &&
+        !galleryLabels.includes('页眉') &&
+        !galleryLabels.includes('页脚') &&
+        !['表格', '表头单元格', '表格单元格'].some((label) => galleryLabels.includes(label)) &&
+        galleryLabels.includes('表题'),
       `${galleryLabels.length} 个结构：${galleryLabels.join(' / ')}`,
     )
 
@@ -733,8 +738,7 @@ async function main() {
     // 复原，别把悬挂缩进留给后面的断言
     await ribbon.getByRole('button', { name: '悬挂缩进两字' }).click()
 
-    // 4e. 光标落到表格结构：功能区右侧冒出「表格」上下文选项卡并自动选中；
-    //     切回「开始」后画廊要自动滚到「表格」卡片（否则聚焦了也找不到）。
+    // 4e. 光标落到表格结构：功能区右侧冒出「表格」上下文选项卡并自动选中。
     const tableOffset = await lastLineStartOffset(page, '|')
     if (tableOffset < 0) throw new Error('示例文档里没有表格')
     await setCaret(page, tableOffset + 1)
@@ -755,7 +759,12 @@ async function main() {
       `栏目：${tableGroups.join(' / ')}`,
     )
 
-    await page.getByRole('tab', { name: '开始' }).click()
+    // 表格结构不再进结构画廊（样式都在「表格」选项卡里），所以画廊自动滚动那条链路
+    // 改用文档里排在靠后的行间公式来验：光标移过去，卡片要自己滚进视野。
+    // 顺带验证「光标离开表格」的行为：选项卡隐去并回到「开始」。
+    const mathOffset = await lastLineStartOffset(page, '$$')
+    if (mathOffset < 0) throw new Error('示例文档里没有行间公式')
+    await setCaret(page, mathOffset + 2)
     const galleryState = await until(
       async () => {
         const state = await page.evaluate(() => {
@@ -770,13 +779,20 @@ async function main() {
             visible: cardBox.left >= stripBox.left - 2 && cardBox.right <= stripBox.right + 2,
           }
         })
-        return state && state.role === '表格' && state.visible ? state : null
+        return state && state.role === '行间公式' && state.visible ? state : null
       },
       { label: '画廊自动滚到当前结构' },
     )
-    check('样式聚焦时画廊自动滚动过去', galleryState.scrollLeft > 0, `滚动到 ${galleryState.scrollLeft}px，「表格」卡片可见`)
+    check('样式聚焦时画廊自动滚动过去', galleryState.scrollLeft > 0, `滚动到 ${galleryState.scrollLeft}px，「行间公式」卡片可见`)
+    const tabGone = await until(
+      async () => ((await page.locator('.ribbon-tab.context-tab').count()) === 0 ? true : null),
+      { label: '光标离开表格后「表格」选项卡隐去' },
+    )
+    const backToStart = (await page.getByRole('tab', { name: '开始' }).getAttribute('aria-selected')) === 'true'
+    check('光标移出表格后选项卡隐去并回到「开始」', tabGone && backToStart, `开始选项卡选中=${backToStart}`)
 
     // 4e-2. 表格选项卡的五个栏目：大小 / 布局 / 边框 / 属性（样式栏的入口由 5 节覆盖）
+    await setCaret(page, tableOffset + 1)
     await page.getByRole('tab', { name: '表格' }).click()
     // 预览默认 85%：折叠边框模型下 Chromium 会把边框宽度按缩放后取整（1.5pt 与 0.75pt 都算成 1px），
     // 量粗细就分不出来了。这里先把预览调到 100%，量完再调回去。
@@ -1043,29 +1059,43 @@ async function main() {
 
     // 样式窗口的页签按结构给：表格类结构没有「边框与底纹」页（线归「表格」选项卡按边设），
     // 「编号」只给 1–6 级标题。
-    const dialogTabsOf = async (cardLabel) => {
+    const closeStyleDialog = async (label) => {
+      const dialog = page.locator('.style-dialog[role="dialog"]')
+      const tabs = await dialog.locator('.dialog-tab').allTextContents()
+      await dialog.getByRole('button', { name: '关闭样式窗口' }).click()
+      await until(async () => ((await dialog.count()) === 0 ? true : null), { label: `样式窗口关闭：${label}` })
+      return tabs
+    }
+    const tabsFromGallery = async (cardLabel) => {
       await page.getByRole('tab', { name: '开始' }).click()
       await page.locator(`.style-card[aria-label="${cardLabel}"]`).first().click()
       const dialog = page.locator('.style-dialog[role="dialog"]')
       await until(async () => ((await dialog.count()) > 0 ? dialog : null), { label: `样式窗口打开：${cardLabel}` })
-      const tabs = await dialog.locator('.dialog-tab').allTextContents()
-      await dialog.getByRole('button', { name: '关闭样式窗口' }).click()
-      await until(async () => ((await dialog.count()) === 0 ? true : null), { label: `样式窗口关闭：${cardLabel}` })
-      return tabs
+      return closeStyleDialog(cardLabel)
     }
-    const cellTabs = await dialogTabsOf('表格单元格')
+    // 表格结构不再进结构画廊，它们的样式窗口入口在「表格」选项卡的样式栏
+    const styleEntries = await page.$$eval('.rgroup .furniture-edit', (nodes) => nodes.map((node) => node.textContent))
+    check(
+      '表格选项卡的样式栏给表格 / 表头 / 内容三个样式窗口入口',
+      ['表格样式…', '表头样式…', '内容样式…'].every((label) => styleEntries.includes(label)),
+      `入口：${styleEntries.join(' / ')}`,
+    )
+    await page.getByRole('button', { name: '内容样式…' }).click()
+    const dialog = page.locator('.style-dialog[role="dialog"]')
+    await until(async () => ((await dialog.count()) > 0 ? dialog : null), { label: '样式窗口打开：表格单元格' })
+    const cellTabs = await closeStyleDialog('表格单元格')
     check(
       '表格类结构的样式窗口不再有「边框与底纹」页',
       !cellTabs.includes('边框与底纹') && cellTabs.includes('字体') && cellTabs.includes('段落'),
       `表格单元格的页签：${cellTabs.join(' / ')}`,
     )
-    const bodyTabs = await dialogTabsOf('正文段落')
+    const bodyTabs = await tabsFromGallery('正文段落')
     check(
       '非标题结构没有「编号」页，普通结构仍有「边框与底纹」',
       !bodyTabs.includes('编号') && bodyTabs.includes('边框与底纹'),
       `正文段落的页签：${bodyTabs.join(' / ')}`,
     )
-    const headingTabs = await dialogTabsOf('四级标题')
+    const headingTabs = await tabsFromGallery('四级标题')
     check('1–6 级标题有「编号」页', headingTabs.includes('编号'), `四级标题的页签：${headingTabs.join(' / ')}`)
 
     // 表格工具的全部改动走的是同一条撤销链：用「撤销」还原到进表格前的样子，别留给后面的断言。
@@ -1082,14 +1112,9 @@ async function main() {
     await zoomSlider.fill('85')
     await page.getByRole('tab', { name: '开始' }).click()
 
-    // 4f. 光标离开表格（停在文件头）时「表格」选项卡收起并回到「开始」，样式高亮落回正文段落
+    // 4f. 光标停在文件头（不在任何结构里）时，样式高亮落回正文段落
+    //     （「光标离开表格 → 选项卡收起并回到开始」由 4e 末尾覆盖）
     await setCaret(page, 0)
-    const tabGone = await until(
-      async () => ((await page.locator('.ribbon-tab.context-tab').count()) === 0 ? true : null),
-      { label: '光标离开表格后「表格」选项卡隐去' },
-    )
-    const backToStart = (await page.getByRole('tab', { name: '开始' }).getAttribute('aria-selected')) === 'true'
-    check('光标移出表格后选项卡隐去并回到「开始」', tabGone && backToStart, `开始选项卡选中=${backToStart}`)
     const fallbackCard = await until(
       async () => {
         const label = await page.locator('.style-card.active').first().getAttribute('aria-label')

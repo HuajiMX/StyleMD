@@ -2,6 +2,7 @@ import { useEffect, useRef, type WheelEvent as ReactWheelEvent } from 'react'
 import { ROLES, type ComputedStyles, type StyleTheme } from '@stylemd/theme-schema'
 import { specimenStyle, singleLineSample } from '../lib/inlineStyle'
 import { explicitGroupCount } from '../lib/roleStyle'
+import { CELL_ROLE, HEADER_ROLE, TABLE_ROLE } from '../lib/tableBorders'
 import { IconPencil } from './icons'
 import { isMathSample, MathSample } from './MathSample'
 
@@ -80,12 +81,22 @@ function scrollGalleryByWheel(event: ReactWheelEvent<HTMLDivElement>) {
   node.scrollLeft += event.deltaY * (event.deltaMode === 1 ? 16 : 1)
 }
 
+/** 表格的三个结构角色：它们在「表格」选项卡里有专门的入口，不再摆进结构画廊。 */
+const TABLE_STRUCTURE_ROLES = new Set<string>([TABLE_ROLE, HEADER_ROLE, CELL_ROLE])
+
 /**
- * 画廊只摆**文档里真实存在的结构**。页眉页脚（`page.header` / `page.footer`）是页面装饰，
- * 不是 Markdown 解析出来的节点，正文里根本没有这种角色；它们有自己的入口——「页面」页的
- * 「页眉页脚」组，那儿既能编辑内容也能开样式窗口。摆在结构画廊里只会让人以为文档里有这东西。
+ * 画廊只摆**在「开始」页有入口意义的结构**。
+ *
+ *  - 页眉页脚（`page.header` / `page.footer`）是页面装饰，不是 Markdown 解析出来的节点，
+ *    正文里根本没有这种角色；它们有自己的入口——「页面」页的「页眉页脚」组，
+ *    那儿既能编辑内容也能开样式窗口。摆在结构画廊里只会让人以为文档里有这东西。
+ *  - 表格 / 表头单元格 / 表格单元格同理：光标进表格会自动切到「表格」选项卡，
+ *    外框、格线、九宫格对齐、内边距、底纹都在那一页按边 / 按面板设置，样式的窗口入口也在那儿。
+ *    表题（`table.caption`）是普通段落，仍留在画廊里。
  */
-const DOCUMENT_ROLES = ROLES.filter((role) => role.category !== '页面')
+const DOCUMENT_ROLES = ROLES.filter(
+  (role) => role.category !== '页面' && !TABLE_STRUCTURE_ROLES.has(role.id),
+)
 
 /** 横向排开的全部样式（文档结构），用于「开始」选项卡。 */
 export function StyleGallery({ theme, computed, activeRole, onPick }: StyleGalleryProps) {
