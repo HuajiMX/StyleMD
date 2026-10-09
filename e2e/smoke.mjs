@@ -733,10 +733,29 @@ async function main() {
     // 复原，别把悬挂缩进留给后面的断言
     await ribbon.getByRole('button', { name: '悬挂缩进两字' }).click()
 
-    // 4e. 光标落到排在末尾的表格结构：画廊要自动滚过去，否则聚焦了也找不到
+    // 4e. 光标落到表格结构：功能区右侧冒出「表格」上下文选项卡并自动选中；
+    //     切回「开始」后画廊要自动滚到「表格」卡片（否则聚焦了也找不到）。
     const tableOffset = await lastLineStartOffset(page, '|')
     if (tableOffset < 0) throw new Error('示例文档里没有表格')
     await setCaret(page, tableOffset + 1)
+    const contextTab = await until(
+      async () => {
+        const tab = page.locator('.ribbon-tab.context-tab')
+        if ((await tab.count()) === 0) return null
+        return (await tab.getAttribute('aria-selected')) === 'true' ? tab : null
+      },
+      { label: '光标进表格后「表格」选项卡自动选中' },
+    )
+    check('光标进表格时右侧出现「表格」选项卡并自动聚焦过去', true, `选中「${(await contextTab.innerText()).trim()}」`)
+
+    const tableGroups = await page.$$eval('.ribbon-body .rgroup-label', (nodes) => nodes.map((node) => node.textContent))
+    check(
+      '表格选项卡分成大小 / 布局 / 边框 / 样式 / 属性五栏',
+      ['大小', '布局', '边框', '样式', '属性'].every((label) => tableGroups.includes(label)),
+      `栏目：${tableGroups.join(' / ')}`,
+    )
+
+    await page.getByRole('tab', { name: '开始' }).click()
     const galleryState = await until(
       async () => {
         const state = await page.evaluate(() => {
@@ -757,8 +776,293 @@ async function main() {
     )
     check('样式聚焦时画廊自动滚动过去', galleryState.scrollLeft > 0, `滚动到 ${galleryState.scrollLeft}px，「表格」卡片可见`)
 
-    // 4f. 光标离开所有结构（停在文件头）时，默认落到正文段落
+    // 4e-2. 表格选项卡的五个栏目：大小 / 布局 / 边框 / 属性（样式栏的入口由 5 节覆盖）
+    await page.getByRole('tab', { name: '表格' }).click()
+    // 预览默认 85%：折叠边框模型下 Chromium 会把边框宽度按缩放后取整（1.5pt 与 0.75pt 都算成 1px），
+    // 量粗细就分不出来了。这里先把预览调到 100%，量完再调回去。
+    const zoomSlider = page.locator('.statusbar .zoom-control input[type="range"]')
+    await zoomSlider.fill('100')
+    await until(
+      async () =>
+        (await preview.locator('.pagedjs_pages').evaluate((element) => getComputedStyle(element).zoom)) === '1' ? true : null,
+      { label: '预览缩放到 100%' },
+    )
+    const readTable = () =>
+      preview.locator('table[data-role="table"]').first().evaluate((table) => {
+        const content = table.closest('.pagedjs_page_content')
+        const box = table.getBoundingClientRect()
+        const header = table.querySelector('th')
+        const cell = table.querySelector('td')
+        return {
+          width: Math.round(box.width),
+          contentWidth: Math.round(content.getBoundingClientRect().width),
+          columns: Array.from(table.rows[0]?.cells ?? []).map((node) => Math.round(node.getBoundingClientRect().width)),
+          thead: table.querySelectorAll(':scope > thead').length,
+          cellAlign: getComputedStyle(cell).textAlign,
+          cellVertical: getComputedStyle(cell).verticalAlign,
+          cellPadding: Math.round(Number.parseFloat(getComputedStyle(cell).paddingTop)),
+          outerTop: Number.parseFloat(getComputedStyle(table).borderTopWidth),
+          outerLeft: Number.parseFloat(getComputedStyle(table).borderLeftWidth),
+          headerBottom: Number.parseFloat(getComputedStyle(header).borderBottomWidth),
+          // 格线的共用边：第一个单元格画竖线，最后一列不画（交给外框）
+          firstCellRight: Number.parseFloat(getComputedStyle(cell).borderRightWidth),
+          lastCellRight: Number.parseFloat(
+            getComputedStyle(table.rows[0].cells[table.rows[0].cells.length - 1]).borderRightWidth,
+          ),
+          lastRowBottom: Number.parseFloat(
+            getComputedStyle(table.rows[table.rows.length - 1].cells[0]).borderBottomWidth,
+          ),
+        }
+      })
+    const tableSignature = (audit) =>
+      JSON.stringify([audit.width, audit.thead, audit.columns, audit.cellAlign, audit.cellVertical, audit.outerTop, audit.outerLeft])
+    const initialTable = await readTable()
+
+    // 大小：撑满 100%（表格宽度等于纸张内容区宽度）
+    await ribbon.getByLabel('表格宽度', { exact: true }).selectOption('full')
+    const filled = await until(
+      async () => {
+        const audit = await readTable()
+        return Math.abs(audit.width - audit.contentWidth) <= 2 ? audit : null
+      },
+      { label: '表格撑满内容区' },
+    )
+    check('大小：撑满 100% 让表格铺满纸张内容区', true, `表宽 ${filled.width}px / 内容区 ${filled.contentWidth}px`)
+
+    // 大小：分布列（各列等宽）
+    await ribbon.getByRole('button', { name: '分布列' }).click()
+    const distributed = await until(
+      async () => {
+        const audit = await readTable()
+        if (audit.columns.length < 3) return null
+        return Math.max(...audit.columns) - Math.min(...audit.columns) <= 2 ? audit : null
+      },
+      { label: '分布列把各列排成等宽' },
+    )
+    check('大小：分布列让各列等宽', true, `列宽 ${distributed.columns.join(' / ')}px`)
+
+    // 布局：一块面板管表头 / 内容两类单元格，先用上面的切换键切到「内容」，
+    //       九宫格改成「右中」（右对齐 + 垂直居中），内边距写进单元格
+    await ribbon.getByRole('button', { name: '内容', exact: true }).click()
+    const layoutState = await page.evaluate(() => {
+      const groups = Array.from(document.querySelectorAll('.ribbon-body > .rgroup'))
+      const layout = groups.find((group) => group.querySelector('.rgroup-label')?.textContent === '布局')
+      if (!layout) return null
+      const buttons = Array.from(layout.querySelectorAll('.seg-button'))
+      const pressed = buttons.find(
+        (button) => button.getAttribute('aria-pressed') === 'true',
+      )
+      return {
+        note: layout.querySelector('.rgroup-note')?.textContent ?? '',
+        pressed: pressed?.textContent ?? '',
+        grids: layout.querySelectorAll('.cell-align-grid').length,
+        boxes: buttons.map((button) => {
+          const box = button.getBoundingClientRect()
+          return { left: Math.round(box.left), top: Math.round(box.top) }
+        }),
+      }
+    })
+    check(
+      '布局：表头与内容共用一个面板，切换键决定改哪一类（按钮纵向排布）',
+      layoutState?.note === '内容单元格' && layoutState.pressed === '内容' && layoutState.grids === 1,
+      `选中「${layoutState?.pressed}」，组内九宫格 ${layoutState?.grids} 个`,
+    )
+    check(
+      '布局：表头 / 内容切换键竖着排（同一列、上下两行）',
+      layoutState.boxes.length === 2 &&
+        layoutState.boxes[0].left === layoutState.boxes[1].left &&
+        layoutState.boxes[0].top < layoutState.boxes[1].top,
+      `位置 ${layoutState.boxes.map((box) => `${box.left},${box.top}`).join(' / ')}`,
+    )
+    await ribbon.getByRole('button', { name: '内容右中' }).click()
+    const aligned = await until(
+      async () => {
+        const audit = await readTable()
+        return audit.cellAlign === 'right' && audit.cellVertical === 'middle' ? audit : null
+      },
+      { label: '九宫格把内容单元格设成右中' },
+    )
+    check('布局：九宫格设置内容单元格对齐（右中）', true, `text-align=${aligned.cellAlign} / vertical-align=${aligned.cellVertical}`)
+
+    const paddingBox = ribbon.getByLabel('内容内边距 pt', { exact: true })
+    await paddingBox.fill('12')
+    const padded = await until(
+      async () => {
+        const audit = await readTable()
+        return audit.cellPadding >= 14 ? audit : null
+      },
+      { label: '单元格内边距生效' },
+    )
+    check('布局：内边距写进单元格', true, `${padded.cellPadding}px（12pt）`)
+
+    // 边框：三线表（只留上下粗线与表头细线）
+    await ribbon.getByRole('button', { name: '三线表' }).click()
+    const threeLine = await until(
+      async () => {
+        const audit = await readTable()
+        return audit.outerTop > 1.8 && audit.outerLeft === 0 && audit.headerBottom > 0.8 && audit.headerBottom < 1.2 ? audit : null
+      },
+      { label: '三线表生效' },
+    )
+    check(
+      '边框：三线表只留上下框线与表头底线',
+      true,
+      `上 ${threeLine.outerTop}px（1.5pt）/ 左 ${threeLine.outerLeft}px / 表头下 ${threeLine.headerBottom}px（0.75pt）`,
+    )
+
+    // 边框和底纹窗口：完整的改法在这里。手里的线（线型 / 粗细 / 颜色）不自动应用，
+    // 点某一条边才刷上去——换线型不会顺手把现有四条边一起改掉。
+    await ribbon.getByRole('button', { name: '边框和底纹…' }).click()
+    const borderDialog = page.locator('.border-dialog')
+    await until(async () => ((await borderDialog.count()) > 0 ? borderDialog : null), { label: '边框窗口打开' })
+    const widthBox = borderDialog.getByLabel('边框粗细 pt', { exact: true })
+    const beforeLineEdit = await readTable()
+    await widthBox.fill('3')
+    await page.waitForTimeout(400)
+    const afterLineEdit = await readTable()
+    check(
+      '边框窗口：改线型 / 粗细不会立刻改动表格',
+      afterLineEdit.outerTop === beforeLineEdit.outerTop && afterLineEdit.headerBottom === beforeLineEdit.headerBottom,
+      `上框线仍是 ${afterLineEdit.outerTop}px，手里这条线是 3pt`,
+    )
+
+    // 七条边各有一个开关，状态看得见
+    const topSide = borderDialog.getByRole('button', { name: '上框线' })
+    const sideKeys = await borderDialog.locator('.bp-side').evaluateAll((nodes) =>
+      nodes.map((node) => `${node.textContent}${node.getAttribute('aria-pressed')}`),
+    )
+    check(
+      '边框窗口：七条边各有开关，开 / 关状态看得见',
+      sideKeys.length === 7 && sideKeys[0] === '上true',
+      `七条边：${sideKeys.join(' / ')}`,
+    )
+
+    // 先撤掉旧的上框线，再点开——这时刷上去的就是手里这条 3pt 的线（"换线型要手动应用"）
+    await topSide.click()
+    const sideOff = await until(
+      async () => {
+        const audit = await readTable()
+        return audit.outerTop === 0 ? audit : null
+      },
+      { label: '把上框线撤掉' },
+    )
+    const topPressed = await topSide.getAttribute('aria-pressed')
+    check(
+      '边框窗口：可以单独撤掉某一条边',
+      sideOff.outerTop === 0 && topPressed === 'false',
+      `上框线 0px，该键的 aria-pressed=${topPressed}`,
+    )
+    await topSide.click()
+    const sideOn = await until(
+      async () => {
+        const audit = await readTable()
+        return audit.outerTop >= 3.8 ? audit : null
+      },
+      { label: '把上框线刷回来' },
+    )
+    check('边框窗口：再点一下按手里的线刷回来', sideOn.outerTop >= 3.8, `上框线 ${sideOn.outerTop}px（3pt）`)
+    check(
+      '边框窗口：换线型不自动应用，撤掉再点开才刷上手里的线',
+      true,
+      `上框线 0px → ${sideOn.outerTop}px（手里这条线 3pt）`,
+    )
+
+    // 内部竖线：相邻单元格共用的那条边只画一次——第一个单元格画右边框，最后一列不画（交给外框）
+    await borderDialog.getByRole('button', { name: '内部竖线' }).click()
+    const grid = await until(
+      async () => {
+        const audit = await readTable()
+        return audit.firstCellRight > 0 && audit.lastCellRight === 0 ? audit : null
+      },
+      { label: '内部竖线只画共用边' },
+    )
+    check(
+      '边框窗口：内部竖线只画一次，最后一列交给外框',
+      grid.lastRowBottom === 0,
+      `第一格右边框 ${grid.firstCellRight}px / 最后一格 ${grid.lastCellRight}px / 最后一行下边框 ${grid.lastRowBottom}px`,
+    )
+    await borderDialog.getByRole('button', { name: '完成' }).click()
+
+    // 属性：表格整体对齐 + 跨页重复标题行开关。
+    // 宽度先按百分比收窄到 60%，否则按内容宽度时表格本来就顶满内容区，看不出左 / 中 / 右的摆位。
+    await ribbon.getByLabel('表格宽度', { exact: true }).selectOption('percent')
+    await ribbon.getByLabel('表格宽度百分比', { exact: true }).fill('60')
+    const narrowed = await until(
+      async () => {
+        const audit = await readTable()
+        return Math.abs(audit.width - audit.contentWidth * 0.6) <= 4 ? audit : null
+      },
+      { label: '表格按内容区的 60% 收窄' },
+    )
+    check('大小：百分比宽度按纸张内容区算', true, `表宽 ${narrowed.width}px / 内容区 ${narrowed.contentWidth}px`)
+
+    await ribbon.getByRole('button', { name: '表格右对齐' }).click()
+    const rightAligned = await until(
+      async () => {
+        const audit = await readTable()
+        const gap = await preview.locator('table[data-role="table"]').first().evaluate((table) => {
+          const content = table.closest('.pagedjs_page_content').getBoundingClientRect()
+          return Math.round(content.right - table.getBoundingClientRect().right)
+        })
+        return Math.abs(gap) <= 2 ? { ...audit, gap } : null
+      },
+      { label: '表格贴到内容区右边' },
+    )
+    check('属性：表格右对齐贴到内容区右边', true, `右边缘差 ${rightAligned.gap}px（表宽 ${rightAligned.width}px）`)
+
+    await ribbon.getByLabel('跨页重复标题行', { exact: true }).uncheck()
+    const headerOff = await until(
+      async () => {
+        const audit = await readTable()
+        return audit.thead === 0 ? audit : null
+      },
+      { label: '关掉跨页重复标题行后不再输出 thead' },
+    )
+    check('属性：关掉跨页重复标题行后首行不进 thead', headerOff.thead === 0, 'thead 数量 0')
+    await ribbon.getByLabel('跨页重复标题行', { exact: true }).check()
+
+    // 属性栏的表格对齐图标是「页框 + 色块」：`.seg-button svg { fill: currentColor }` 会把没写
+    // fill 的页框填成实心方块，三个图标就长得一样了，这里盯着它别再退回去。
+    const alignIcons = await page.evaluate(() => {
+      const groups = Array.from(document.querySelectorAll('.ribbon-body > .rgroup'))
+      const props = groups.find((group) => group.querySelector('.rgroup-label')?.textContent === '属性')
+      return Array.from(props?.querySelectorAll('.seg-button svg') ?? []).map((svg) => {
+        const frame = svg.firstElementChild
+        const block = svg.querySelector('rect[fill="currentColor"]')
+        return {
+          frameFill: frame ? getComputedStyle(frame).fill : '',
+          blockFill: block ? getComputedStyle(block).fill : '',
+        }
+      })
+    })
+    check(
+      '属性：表格对齐图标是页框 + 色块，不是三个实心方块',
+      alignIcons.length === 3 && alignIcons.every((icon) => icon.frameFill === 'none' && icon.blockFill !== 'none'),
+      `页框 fill=${alignIcons[0]?.frameFill} / 色块 fill=${alignIcons[0]?.blockFill}`,
+    )
+
+    // 表格工具的全部改动走的是同一条撤销链：用「撤销」还原到进表格前的样子，别留给后面的断言。
+    await page.getByRole('tab', { name: '编辑' }).click()
+    const undoButton = ribbon.getByRole('button', { name: '撤销样式修改' })
+    let tableRestored = false
+    for (let attempt = 0; attempt < 24 && !tableRestored; attempt += 1) {
+      if (await undoButton.isDisabled()) break
+      await undoButton.click()
+      await page.waitForTimeout(120)
+      tableRestored = tableSignature(await readTable()) === tableSignature(initialTable)
+    }
+    check('表格工具里的改动可以用「撤销」整批还原', tableRestored, `还原到 ${tableSignature(initialTable)}`)
+    await zoomSlider.fill('85')
+    await page.getByRole('tab', { name: '开始' }).click()
+
+    // 4f. 光标离开表格（停在文件头）时「表格」选项卡收起并回到「开始」，样式高亮落回正文段落
     await setCaret(page, 0)
+    const tabGone = await until(
+      async () => ((await page.locator('.ribbon-tab.context-tab').count()) === 0 ? true : null),
+      { label: '光标离开表格后「表格」选项卡隐去' },
+    )
+    const backToStart = (await page.getByRole('tab', { name: '开始' }).getAttribute('aria-selected')) === 'true'
+    check('光标移出表格后选项卡隐去并回到「开始」', tabGone && backToStart, `开始选项卡选中=${backToStart}`)
     const fallbackCard = await until(
       async () => {
         const label = await page.locator('.style-card.active').first().getAttribute('aria-label')

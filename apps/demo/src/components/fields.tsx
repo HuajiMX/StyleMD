@@ -395,18 +395,22 @@ interface IconButtonProps {
   label: string
   title?: string
   disabled?: boolean
+  /** 有开/关语义的按钮（例如「分布列」）传它，按下时染强调色。 */
+  pressed?: boolean
   /** 图标旁边的短文字，两三个字以内；能靠图标认出来的动作就留空。 */
   text?: string
   children: ReactNode
   onClick: () => void
 }
 
-export function IconButton({ label, title, disabled, text, children, onClick }: IconButtonProps) {
+export function IconButton({ label, title, disabled, pressed, text, children, onClick }: IconButtonProps) {
   return (
     <button
       type="button"
-      className={`icon-button${text ? ' with-text' : ''}`}
+      className={`icon-button${text ? ' with-text' : ''}${pressed ? ' on' : ''}`}
       aria-label={label}
+      /* 普通命令按钮不写 aria-pressed（写了等于声明自己是开关） */
+      aria-pressed={pressed === undefined ? undefined : pressed}
       title={title ?? label}
       disabled={disabled}
       onClick={onClick}

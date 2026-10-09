@@ -74,4 +74,32 @@ describe('validateTheme', () => {
     expect(result.ok).toBe(false)
     expect(result.errors.join()).toContain('更新版本')
   })
+
+  it('表格宽度按纸张内容区的百分比算，超出 1–100 就报错', () => {
+    const withTable = (percent: number | undefined, minPercent?: number) => {
+      const theme = createEmptyTheme()
+      theme.document.table = {
+        ...(percent === undefined ? {} : { widthPercent: percent }),
+        ...(minPercent === undefined ? {} : { minWidthPercent: minPercent }),
+      }
+      return validateTheme(theme)
+    }
+    expect(withTable(80).ok).toBe(true)
+    expect(withTable(100).ok).toBe(true)
+    expect(withTable(0).ok).toBe(false)
+    expect(withTable(101).ok).toBe(false)
+    expect(withTable(undefined, 100).ok).toBe(true)
+    expect(withTable(undefined, 120).ok).toBe(false)
+    expect(withTable(undefined, 120).errors.join()).toContain('minWidthPercent')
+    // 最小宽度大于宽度不拦，但要提示一次，免得用户以为宽度滑块失灵
+    const reversed = withTable(60, 80)
+    expect(reversed.ok).toBe(true)
+    expect(reversed.warnings.join()).toContain('最小宽度大于表格宽度')
+  })
+
+  it('表格最小高度是磅值，负数报错', () => {
+    const theme = createEmptyTheme()
+    theme.document.table = { minHeightPt: -1 }
+    expect(validateTheme(theme).ok).toBe(false)
+  })
 })

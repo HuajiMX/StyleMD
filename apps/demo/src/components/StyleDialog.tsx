@@ -532,6 +532,17 @@ export function StyleDialog(props: StyleDialogProps) {
     ),
     border: (
       <>
+        {/* 表格单元格的边是相邻单元格共用的，不是四条独立的边：这里的四边对表格格线不生效，
+            统一在「表格」选项卡的边框里按"边"设置。 */}
+        {role === 'table.cell' || role === 'table.header' ? (
+          <Section title="表格格线" note="相邻单元格共用一条边">
+            <span className="section-text">
+              表格里的线不像普通结构那样每个盒子各画四条：单元格紧密堆积，内部横线与内部竖线是相邻单元格
+              共用的同一条。{role === 'table.header' ? '这里设置的下边框就是「表头下线」；' : ''}
+              其余的外框、内部线请在「表格」选项卡的「边框」栏（或「边框和底纹…」窗口）里按边设置。
+            </span>
+          </Section>
+        ) : null}
         <Section title="边框" note="样式 / 线宽 pt / 颜色">
           <Row>
             {SIDES.map((side) => {

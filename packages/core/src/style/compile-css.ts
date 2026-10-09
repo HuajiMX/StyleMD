@@ -5,6 +5,7 @@ import {
   type BorderSide,
   type ComputedRoleStyle,
   type ComputedStyles,
+  type ComputedTableLayout,
   type PageFurniture,
 } from '@stylemd/theme-schema'
 import { escapeCssString, planFontFamily } from './font-faces'
@@ -57,6 +58,66 @@ function borderDeclaration(side: 'top' | 'right' | 'bottom' | 'left', border: Bo
   return [`border-${side}: ${pt(width)} ${style} ${color};`]
 }
 
+/** 一个方向是不是画得出线（`none` 与没写都算不画）。 */
+function drawsLine(side: BorderSide | undefined): boolean {
+  return Boolean(side?.style && side.style !== 'none')
+}
+
+export interface TableGridLines {
+  /** 内部横线：相邻两行共用的一条。 */
+  horizontal: BorderSide | undefined
+  /** 内部竖线：相邻两列共用的一条。 */
+  vertical: BorderSide | undefined
+  /** 表头下面那条线（表头行与第一行数据共用）。 */
+  headerBottom: BorderSide | undefined
+}
+
+/**
+ * 表格格线的唯一读法：先看 `table` 角色的 `grid`，没有再回落到旧样式包写在单元格四边上的值
+ * （`table.cell` 的右边框当内部竖线、下边框当内部横线；左 / 上两条由邻居的线代表）。
+ * 编译器与宿主 UI 都走这里，别在两处各读一遍。
+ */
+export function tableGridOf(styles: ComputedStyles): TableGridLines {
+  const grid = styles.roles['table']?.grid ?? {}
+  const cell = styles.roles['table.cell']?.border
+  const header = styles.roles['table.header']?.border
+  const horizontal = grid.horizontal ?? (drawsLine(cell?.bottom) ? cell?.bottom : undefined)
+  const vertical = grid.vertical ?? (drawsLine(cell?.right) ? cell?.right : undefined)
+  return {
+    horizontal,
+    vertical,
+    headerBottom: drawsLine(header?.bottom) ? header?.bottom : horizontal,
+  }
+}
+
+/**
+ * 表格的格线块。
+ *
+ * 普通结构的边框是四条各自独立的边，一个个盒子各画各的；表格单元格是紧密堆积的，相邻单元格
+ * **共用**一条边——左边单元格的右边框和右边单元格的左边框在视觉上是同一条线，散着写就会在
+ * 折叠边框模型里按"样式优先级 → 比粗细"打架，「给某一条边单独设个虚线」根本落不了地。
+ * 所以这里让每个单元格只画自己的右边和下边，最后一行 / 最后一列不画（那两条交给外框），
+ * 每条共用边只声明一次：竖线、横线、表头线各是一套样式，互不干扰。
+ */
+function tableGridBlock(lines: TableGridLines): string {
+  const cells = 'table[data-role="table"] th, table[data-role="table"] td'
+  // 选择器要逐个写全：`${cells}:last-child` 只会把伪类接到最后一个选择器上（th 就漏了）
+  const lastCells = 'table[data-role="table"] th:last-child, table[data-role="table"] td:last-child'
+  const grid = [
+    borderDeclaration('right', lines.vertical).join(' ') || 'border-right: none;',
+    borderDeclaration('bottom', lines.horizontal).join(' ') || 'border-bottom: none;',
+  ]
+  const header = borderDeclaration('bottom', lines.headerBottom).join(' ') || 'border-bottom: none;'
+  return [
+    `${cells} {\n  ${grid.join('\n  ')}\n}`,
+    // 最后一列 / 最后一行不画格线：它们的外侧就是外框，画了会和框线叠成两条
+    `${lastCells} { border-right: none; }`,
+    'table[data-role="table"] > tbody > tr:last-child > *:not([data-role="table-header"]) { border-bottom: none; }',
+    // 表头下面那条线：认 data-role（关掉跨页重复标题行时首行落在 tbody 里，照样要画）
+    `table[data-role="table"] [data-role="table-header"] {\n  ${header}\n}`,
+  ].join('\n')
+}
+
 function fontDeclarations(style: ComputedRoleStyle, faceName: string, faces: string[]): string[] {
   const out: string[] = []
   const declaredFamily = fontFamilyDeclaration(style.font, faceName, faces)
@@ -85,8 +146,29 @@ function paragraphDeclarations(style: ComputedRoleStyle, counterName?: string): 
   if (paragraph.pageBreakBefore) out.push('break-before: page;')
   if (paragraph.widows) out.push(`widows: ${paragraph.widows};`)
   if (paragraph.orphans) out.push(`orphans: ${paragraph.orphans};`)
+  // 单元格垂直对齐：默认的 top 由基座规则兜住（见 tableLayoutBlock），换了值才写声明。
+  if (paragraph.verticalAlign !== 'top') out.push(`vertical-align: ${paragraph.verticalAlign};`)
   if (counterNameish(counterName)) out.push(`counter-increment: ${counterName};`)
   return out
+}
+
+/**
+ * 表格这个盒子自己的版式：宽度模式、最小尺寸、整体对齐、分布列。
+ *
+ * 宽度一律相对纸张内容区。整体对齐靠 auto 外边距：`width: auto` 的表格是 shrink-to-fit 的，
+ * 左右外边距吃到 auto 就能把它推到中间或右边——不能靠 `text-align`，那是给单元格内容用的。
+ */
+function tableLayoutBlock(table: ComputedTableLayout): string {
+  const lines = ['border-collapse: collapse;', 'max-width: 100%;']
+  if (typeof table.widthPercent === 'number') lines.push(`width: ${round(table.widthPercent)}%;`)
+  else if (table.widthMode === 'full') lines.push('width: 100%;')
+  if (table.minWidthPercent > 0) lines.push(`min-width: ${round(table.minWidthPercent)}%;`)
+  if (table.minHeightPt > 0) lines.push(`height: ${pt(table.minHeightPt)};`)
+  if (table.align === 'center') lines.push('margin-inline: auto;')
+  else if (table.align === 'right') lines.push('margin-inline-start: auto;', 'margin-inline-end: 0;')
+  // 分布列：定列宽 + 各列等宽（等宽由渲染器给每个单元格的宽度决定，见 html.ts）
+  if (table.distributeColumns) lines.push('table-layout: fixed;')
+  return `table[data-role="table"] {\n  ${lines.join('\n  ')}\n}`
 }
 
 /**
@@ -113,12 +195,17 @@ function counterNameish(value: string | undefined): value is string {
   return typeof value === 'string' && value.length > 0
 }
 
+/** 表格单元格角色的边框走格线块（相邻单元格共用一条边），这里不再单独画四边。 */
+const GRID_BORDER_ROLES = new Set(['table.header', 'table.cell'])
+
 function boxDeclarations(style: ComputedRoleStyle): string[] {
   const out: string[] = []
-  out.push(...borderDeclaration('top', style.border.top))
-  out.push(...borderDeclaration('right', style.border.right))
-  out.push(...borderDeclaration('bottom', style.border.bottom))
-  out.push(...borderDeclaration('left', style.border.left))
+  if (!GRID_BORDER_ROLES.has(style.role)) {
+    out.push(...borderDeclaration('top', style.border.top))
+    out.push(...borderDeclaration('right', style.border.right))
+    out.push(...borderDeclaration('bottom', style.border.bottom))
+    out.push(...borderDeclaration('left', style.border.left))
+  }
   if (style.border.radiusPt) out.push(`border-radius: ${pt(style.border.radiusPt)};`)
   if (style.background.color) out.push(`background: ${style.background.color};`)
   if (style.paddingPt) out.push(`padding: ${pt(style.paddingPt)};`)
@@ -331,11 +418,12 @@ export function compileCss(styles: ComputedStyles, options: CompileCssOptions = 
       'p, li, td, th { overflow-wrap: anywhere; }',
       'blockquote > p[data-role="body-text"] { font: inherit; color: inherit; text-indent: inherit; }',
       'p[data-role="image"] { text-align: center; }',
-      'table[data-role="table"] { border-collapse: collapse; max-width: 100%; }',
+      tableLayoutBlock(styles.table),
       // 表头是本行的最后一行时 Paged.js 会把它单独留在上一页页脚，下一行又整片挪到下一页，
       // 只有表头的分片没有表体撑宽，列宽会和续页对不上。宁可整张表换页，也不留孤行表头。
       'table[data-role="table"] thead { break-after: avoid; }',
       '[data-role="table-header"], [data-role="table-cell"] { vertical-align: top; }',
+      tableGridBlock(tableGridOf(styles)),
     ].join('\n'),
   )
 

@@ -1,4 +1,4 @@
-import type { DocumentDefaults, PageSetup, StyleTheme } from './types'
+import type { ComputedTableLayout, DocumentDefaults, PageSetup, StyleTheme, TableSpec } from './types'
 import { CURRENT_SCHEMA_VERSION } from './types'
 import { fontSlotsFromChain } from './fonts'
 
@@ -44,6 +44,25 @@ export const DEFAULT_DOCUMENT_DEFAULTS: DocumentDefaults = {
   lineHeight: { mode: 'multiple', value: 1.5 },
   textColor: '#1a1a1a',
   background: '#ffffff',
+}
+
+/**
+ * 表格版式的默认值：按内容自适应、左对齐、跨页重复标题行，不设最小尺寸、不均分行列。
+ * 与旧版渲染结果一致——样式包没写 `document.table` 时，编译器就按这一份来。
+ */
+export const DEFAULT_TABLE: ComputedTableLayout = {
+  widthMode: 'auto',
+  minWidthPercent: 0,
+  minHeightPt: 0,
+  distributeColumns: false,
+  distributeRows: false,
+  repeatHeaderRow: true,
+  align: 'left',
+}
+
+/** 把样式包里的残缺表格版式补成一份完整设置（缺省值见 DEFAULT_TABLE）。 */
+export function fillTableSpec(spec: TableSpec | undefined): ComputedTableLayout {
+  return { ...DEFAULT_TABLE, ...(spec ?? {}) }
 }
 
 /**

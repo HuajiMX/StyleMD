@@ -1,5 +1,5 @@
 import type { Root } from 'mdast'
-import { FALLBACK_ROLE, cssRoleName } from '@stylemd/theme-schema'
+import { FALLBACK_ROLE, cssRoleName, type ComputedTableLayout } from '@stylemd/theme-schema'
 import { childrenOf, type AnyNode } from '../internal/node'
 import { annotateRoles } from '../roles/annotate'
 import { MATH_BASE_CSS, renderMath } from './math'
@@ -23,6 +23,8 @@ export interface RenderOptions {
    * 默认开启：直接调 renderBody 是常见用法，忘了标注会让整篇退化成正文样式。
    */
   autoAnnotate?: boolean
+  /** 表格整体版式（样式包的 document.table），决定 thead、等宽列与分页器的列宽标定。 */
+  table?: ComputedTableLayout
 }
 
 export interface RenderResult {
@@ -43,6 +45,8 @@ interface RenderContext {
   /** 文档里出现过公式时才把 KaTeX 样式塞进 <head>，普通文档的产物大小不受影响。 */
   hasMath: boolean
   definitions: Map<string, AnyNode>
+  /** 表格整体版式；不传按「跨页重复标题行 + 自然列宽」处理。 */
+  table: ComputedTableLayout | undefined
 }
 
 const INLINE_TYPES = new Set([
@@ -232,26 +236,68 @@ function renderChildren(node: AnyNode, ctx: RenderContext, separator = ''): stri
 function renderTable(node: AnyNode, ctx: RenderContext): string {
   const rows = childrenOf(node)
   const headerRow = rows[0]?.type === 'tableRow' ? rows[0] : undefined
-  const bodyRows = headerRow ? rows.slice(1) : rows
+  /**
+   * 关掉「跨页重复标题行」时，首行照样是表头样式（角色挂在单元格上），但不放进 `<thead>`：
+   * Paged.js 只看 `<thead>` 决定要不要给续页补表头，不放进 thead 它就不补了。
+   */
+  const headRow = (ctx.table?.repeatHeaderRow ?? true) ? headerRow : undefined
+  const bodyRows = headRow ? rows.slice(1) : rows
 
   const renderCell = (cell: AnyNode, isHeader: boolean, index: number): string => {
     const tag = isHeader ? 'th' : 'td'
     const alignment = Array.isArray(node.align) ? node.align[index] : undefined
-    const align = typeof alignment === 'string' && ['left', 'center', 'right'].includes(alignment) ? ` style="text-align: ${alignment}"` : ''
+    /**
+     * 列对齐是内容级的直排（跟 Word 里给单元格手动设对齐是一层），优先于样式包。
+     * 但左对齐不写成行内样式：它本来就是 CSS 的默认值，`|:---|` 与 `|---|` 渲染等价，
+     * 而写成行内样式会盖住样式包里的「表格 → 布局 → 单元格对齐」，让那一栏在最常见的
+     * 左对齐列上变成死的。居中 / 右对齐仍按原文直排，样式包不覆盖。
+     */
+    const align = alignment === 'center' || alignment === 'right' ? ` style="text-align: ${alignment}"` : ''
     const attributes = isHeader
       ? ` data-role="table-header"`
       : ` data-role="table-cell"`
     return `<${tag}${attributes}${align}>${renderChildren(cell, ctx)}</${tag}>`
   }
 
-  const header = headerRow
-    ? `  <thead>\n    <tr>${childrenOf(headerRow).map((cell, index) => renderCell(cell, true, index)).join('')}</tr>\n  </thead>\n`
+  const header = headRow
+    ? `  <thead>\n    <tr>${childrenOf(headRow).map((cell, index) => renderCell(cell, true, index)).join('')}</tr>\n  </thead>\n`
     : ''
   const body = bodyRows
-    .map((row) => `    <tr>${childrenOf(row).map((cell, index) => renderCell(cell, false, index)).join('')}</tr>`)
+    .map((row) => `    <tr>${childrenOf(row).map((cell, index) => renderCell(cell, row === headerRow, index)).join('')}</tr>`)
     .join('\n')
 
-  return `<table${roleAttribute(node)}>\n${header}  <tbody>\n${body}\n  </tbody>\n</table>`
+  const attributes = tableAttributes(ctx.table)
+  return `<table${roleAttribute(node)}${attributes}>\n${colgroup(ctx.table, headerRow)}${header}  <tbody>\n${body}\n  </tbody>\n</table>`
+}
+
+/**
+ * 表格元素上的版式标记。宽度与最小尺寸由 CSS 表达（编译期已知），这里只标"分布式"这种
+ * 结构信息：分页器要在分页前按它把列宽/行高定死，光看 CSS 判不出来。
+ */
+function tableAttributes(table: ComputedTableLayout | undefined): string {
+  if (!table) return ''
+  const distribute = [
+    table.distributeColumns ? 'columns' : '',
+    table.distributeRows ? 'rows' : '',
+  ].filter(Boolean)
+  return distribute.length > 0 ? ` data-table-distribute="${distribute.join(' ')}"` : ''
+}
+
+/**
+ * 分布列：列宽等分。这里给出等宽的 `<colgroup>`，配 `table-layout: fixed`（见 compile-css）
+ * 就能在不定宽的表上也把列排齐；分页渲染里列宽还会被标定成具体的 px，续页分片靠单元格宽度对齐。
+ */
+function colgroup(table: ComputedTableLayout | undefined, headerRow: AnyNode | undefined): string {
+  if (!table?.distributeColumns || !headerRow) return ''
+  const count = childrenOf(headerRow).length
+  if (count < 2) return ''
+  const width = roundPercent(100 / count)
+  const columns = Array.from({ length: count }, () => `<col style="width: ${width}%">`).join('')
+  return `  <colgroup>${columns}</colgroup>\n`
+}
+
+function roundPercent(value: number): number {
+  return Math.round(value * 10000) / 10000
 }
 
 function createContext(options: RenderOptions, root: AnyNode): RenderContext {
@@ -268,6 +314,7 @@ function createContext(options: RenderOptions, root: AnyNode): RenderContext {
     rawHtmlWarned: false,
     hasMath: false,
     definitions,
+    table: options.table,
   }
 }
 

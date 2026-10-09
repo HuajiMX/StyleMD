@@ -1,6 +1,7 @@
 import {
   PARAGRAPH_CONVENTION_FIELDS,
   ROLES,
+  fillTableSpec,
   getRole,
   type ComputedRoleStyle,
   type ComputedStyles,
@@ -53,8 +54,10 @@ function baseFromDefaults(defaults: DocumentDefaults): ResolvedPart {
       pageBreakBefore: false,
       widows: 2,
       orphans: 2,
+      verticalAlign: 'top',
     },
     border: {},
+    grid: {},
     background: {},
     paddingPt: 0,
     numbering: { enabled: false },
@@ -103,6 +106,8 @@ export function mergeRoleStyle(base: ResolvedPart, style: RoleStyle, mode: 'self
       pageBreakBefore: defined(paragraph.pageBreakBefore, base.paragraph.pageBreakBefore),
       widows: defined(paragraph.widows, base.paragraph.widows),
       orphans: defined(paragraph.orphans, base.paragraph.orphans),
+      // 垂直对齐是家族属性（不写就不动）：单元格的九宫格对齐里竖轴由角色自己声明。
+      verticalAlign: defined(paragraph.verticalAlign, base.paragraph.verticalAlign),
     },
     border: {
       top: style.border?.top ? { ...base.border.top, ...style.border.top } : base.border.top,
@@ -110,6 +115,11 @@ export function mergeRoleStyle(base: ResolvedPart, style: RoleStyle, mode: 'self
       bottom: style.border?.bottom ? { ...base.border.bottom, ...style.border.bottom } : base.border.bottom,
       left: style.border?.left ? { ...base.border.left, ...style.border.left } : base.border.left,
       radiusPt: defined(style.border?.radiusPt, base.border.radiusPt),
+    },
+    // 格线跟边框一样是"家族属性"（不写就不动）；只有 table 角色会声明它。
+    grid: {
+      horizontal: style.grid?.horizontal ? { ...base.grid.horizontal, ...style.grid.horizontal } : base.grid.horizontal,
+      vertical: style.grid?.vertical ? { ...base.grid.vertical, ...style.grid.vertical } : base.grid.vertical,
     },
     background: { color: defined(style.background?.color, base.background.color) },
     paddingPt: defined(style.paddingPt, base.paddingPt),
@@ -174,5 +184,5 @@ export function resolveStyles(theme: StyleTheme): ComputedStyles {
     if (!roles[style.role]) roles[style.role] = computeRole(style.role, byRole, defaults)
   }
 
-  return { themeId: theme.id, page: theme.document.page, defaults, roles }
+  return { themeId: theme.id, page: theme.document.page, defaults, table: fillTableSpec(theme.document.table), roles }
 }

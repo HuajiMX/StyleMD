@@ -138,4 +138,89 @@ describe('compileCss', () => {
     const css = compileCss(resolveStyles(legacy))
     expect(css).toContain('[data-role="page-header"] {\n  border-bottom: 1pt solid #123456;\n}')
   })
+
+  it('表格版式：宽度模式、最小尺寸、整体对齐、分布列', () => {
+    const custom = structuredClone(tech)
+    custom.document.table = {
+      widthMode: 'full',
+      minWidthPercent: 40,
+      minHeightPt: 30,
+      align: 'center',
+      distributeColumns: true,
+    }
+    const block = compileCss(resolveStyles(custom)).match(/table\[data-role="table"\] \{[^}]*\}/)?.[0] ?? ''
+    expect(block).toContain('width: 100%;')
+    expect(block).toContain('min-width: 40%;')
+    expect(block).toContain('height: 30pt;')
+    expect(block).toContain('margin-inline: auto;')
+    expect(block).toContain('table-layout: fixed;')
+    // 默认（没写 document.table）只有基座那两条，别把宽度写死
+    const base = compileCss(resolveStyles(tech)).match(/table\[data-role="table"\] \{[^}]*\}/)?.[0] ?? ''
+    expect(base).toContain('border-collapse: collapse;')
+    expect(base).toContain('max-width: 100%;')
+    expect(base).not.toMatch(/\n {2}width:/)
+    expect(base).not.toContain('table-layout')
+  })
+
+  it('表格宽度可以按百分比固定，右对齐时左外边距自动撑开', () => {
+    const custom = structuredClone(tech)
+    custom.document.table = { widthMode: 'full', widthPercent: 72, align: 'right' }
+    const block = compileCss(resolveStyles(custom)).match(/table\[data-role="table"\] \{[^}]*\}/)?.[0] ?? ''
+    expect(block).toContain('width: 72%;')
+    expect(block).not.toMatch(/\n {2}width: 100%;/)
+    expect(block).toContain('margin-inline-start: auto;')
+  })
+
+  it('单元格垂直对齐：默认 top 不写声明，改成 middle 才写', () => {
+    const custom = structuredClone(tech)
+    // 只认角色块（行首的 `[data-role="table-header"] {`）：格线块里的表头选择器也带这个属性。
+    const headerBlock = (theme: typeof custom) =>
+      compileCss(resolveStyles(theme)).match(/(?:^|\n)\[data-role="table-header"\] \{[\s\S]*?\n\}/)?.[0] ?? ''
+    // 默认的 top 由基座规则兜住，角色块里不该出现这条声明
+    expect(headerBlock(custom)).not.toContain('vertical-align')
+    custom.styles.find((style) => style.role === 'table.header')!.paragraph = { verticalAlign: 'middle' }
+    expect(headerBlock(custom)).toContain('vertical-align: middle;')
+  })
+
+  it('表格格线：单元格只画右边与下边，最后一列 / 最后一行交给外框', () => {
+    const custom = structuredClone(tech)
+    custom.styles.find((style) => style.role === 'table')!.grid = {
+      horizontal: { style: 'dashed', widthPt: 1, color: '#111111' },
+      vertical: { style: 'dotted', widthPt: 0.5, color: '#222222' },
+    }
+    const css = compileCss(resolveStyles(custom))
+    const cellRule = css.match(/table\[data-role="table"\] th, table\[data-role="table"\] td \{[\s\S]*?\n\}/)?.[0] ?? ''
+    expect(cellRule).toContain('border-right: 0.5pt dotted #222222;')
+    expect(cellRule).toContain('border-bottom: 1pt dashed #111111;')
+    expect(cellRule).not.toContain('border-top')
+    expect(cellRule).not.toContain('border-left')
+    expect(css).toContain('table[data-role="table"] th:last-child, table[data-role="table"] td:last-child { border-right: none; }')
+    expect(css).toContain(
+      'table[data-role="table"] > tbody > tr:last-child > *:not([data-role="table-header"]) { border-bottom: none; }',
+    )
+  })
+
+  it('表格格线：表头下线来自表头角色，单元格角色自己不再输出四边', () => {
+    const css = compileCss(resolveStyles(thesis))
+    // 三线表预设的表头底线（0.75pt）现在由格线块画在表头单元格的下边
+    expect(css).toMatch(/table\[data-role="table"\] \[data-role="table-header"\] \{\n  border-bottom: 0\.75pt solid #000000;/)
+    const cellRoleBlock = css.match(/(?:^|\n)\[data-role="table-cell"\] \{[\s\S]*?\n\}/)?.[0] ?? ''
+    expect(cellRoleBlock).not.toContain('border')
+    expect(cellRoleBlock).toContain('padding: 4pt;')
+  })
+
+  it('旧样式包把格线写在单元格四边上时，右边框当竖线、下边框当横线', () => {
+    const legacy = structuredClone(tech)
+    legacy.styles.find((style) => style.role === 'table.cell')!.border = {
+      top: { style: 'solid', widthPt: 1, color: '#333333' },
+      right: { style: 'solid', widthPt: 1, color: '#333333' },
+      bottom: { style: 'solid', widthPt: 1, color: '#333333' },
+      left: { style: 'solid', widthPt: 1, color: '#333333' },
+    }
+    const cellRule = compileCss(resolveStyles(legacy)).match(
+      /table\[data-role="table"\] th, table\[data-role="table"\] td \{[\s\S]*?\n\}/,
+    )?.[0] ?? ''
+    expect(cellRule).toContain('border-right: 1pt solid #333333;')
+    expect(cellRule).toContain('border-bottom: 1pt solid #333333;')
+  })
 })

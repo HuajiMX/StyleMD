@@ -232,3 +232,122 @@ export function IconChevronDown() {
     </svg>
   )
 }
+
+/** 表格宽度按内容自适应：窄表居中，两侧留白。 */
+export function IconTableFitContent() {
+  return (
+    <svg {...BASE}>
+      <path d="M6 2.5h4v11H6z" />
+      <path d="M6 6.4h4M6 9.6h4" />
+      <path d="M2.2 5.4v5.2M13.8 5.4v5.2" />
+    </svg>
+  )
+}
+
+/** 表格撑满内容区：横贯整幅、左右顶到边。 */
+export function IconTableFillWidth() {
+  return (
+    <svg {...BASE}>
+      <path d="M2.5 3h11v10h-11z" />
+      <path d="M2.5 6.4h11M2.5 9.6h11" />
+      <path d="M4.6 8h6.8" />
+      <path d="M6 6.9 4.7 8l1.3 1.1M10 6.9 11.3 8 10 9.1" />
+    </svg>
+  )
+}
+
+/** 分布列：各列等宽。 */
+export function IconDistributeColumns() {
+  return (
+    <svg {...BASE}>
+      <path d="M2.5 2.5h11v11h-11z" />
+      <path d="M5.2 2.5v11M8 2.5v11M10.8 2.5v11" />
+    </svg>
+  )
+}
+
+/** 分布行：各行等高。 */
+export function IconDistributeRows() {
+  return (
+    <svg {...BASE}>
+      <path d="M2.5 2.5h11v11h-11z" />
+      <path d="M2.5 5.2h11M2.5 8h11M2.5 10.8h11" />
+    </svg>
+  )
+}
+
+/** 跨页重复标题行：标题带每页都补一遍。 */
+export function IconRepeatHeaderRow() {
+  return (
+    <svg {...BASE}>
+      <path d="M2.5 2.5h11v3.4h-11z" />
+      <path d="M2.5 5.9h11v7.6h-11z" />
+      <path d="M2.5 9.4h11" />
+    </svg>
+  )
+}
+
+/**
+ * 表格整体对齐：一页里的小表块靠左 / 居中 / 靠右。
+ *
+ * 页框必须自己写上 `fill="none"`：`.seg-button svg { fill: currentColor }` 那条规则把
+ * fill 设在 svg 上，子元素没有自己的 fill 就会继承它——页框会被填成一整块实心方块，
+ * 三个图标就长得一模一样了（真踩过）。
+ */
+function TableAlignIcon({ mode }: { mode: 'left' | 'center' | 'right' }) {
+  const x = mode === 'left' ? 3 : mode === 'center' ? 5.7 : 8.4
+  return (
+    <svg {...BASE}>
+      <rect x="2.2" y="2.2" width="11.6" height="11.6" fill="none" />
+      <rect x={x} y="4.7" width="4.6" height="6.6" fill="currentColor" stroke="none" />
+    </svg>
+  )
+}
+
+export function IconTableAlignLeft() {
+  return <TableAlignIcon mode="left" />
+}
+
+export function IconTableAlignCenter() {
+  return <TableAlignIcon mode="center" />
+}
+
+export function IconTableAlignRight() {
+  return <TableAlignIcon mode="right" />
+}
+
+/** 边框预设：无 / 全部网格 / 外框 / 三线。 */
+export function IconBorderNone() {
+  return (
+    <svg {...BASE}>
+      <path d="M2.5 2.5h11v11h-11z" />
+      <path d="M3.6 12.4 12.4 3.6" />
+    </svg>
+  )
+}
+
+export function IconBorderGrid() {
+  return (
+    <svg {...BASE}>
+      <path d="M2.5 2.5h11v11h-11z" />
+      <path d="M2.5 8h11M8 2.5v11" />
+    </svg>
+  )
+}
+
+export function IconBorderOuter() {
+  return (
+    <svg {...BASE} strokeWidth={2}>
+      <path d="M3 3h10v10H3z" />
+    </svg>
+  )
+}
+
+export function IconBorderThreeLine() {
+  return (
+    <svg {...BASE}>
+      <path d="M2.5 3.2h11M2.5 12.8h11" strokeWidth={2} />
+      <path d="M2.5 6.6h11" strokeWidth={1} />
+    </svg>
+  )
+}

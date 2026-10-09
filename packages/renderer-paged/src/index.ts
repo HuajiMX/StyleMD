@@ -185,8 +185,40 @@ function measureColumnWidths(table) {
   }
   return widths;
 }
+function measureRowHeights(table) {
+  var heights = [];
+  for (var r = 0; r < table.rows.length; r++) heights.push(table.rows[r].offsetHeight);
+  return heights;
+}
+/**
+ * 把自然列宽折算成目标表宽下的列宽：等宽列按列数均分，其余按比例缩放。
+ * 缩放后逐列取整会有零点几像素的误差，把差额补到最后一列，表宽才和列宽之和严格相等
+ * （不等的话定宽布局会自己把差额再分一次，续页分片就和第一页错开）。
+ */
+function fitColumnWidths(widths, target, equal) {
+  var total = 0;
+  for (var i = 0; i < widths.length; i++) total += widths[i];
+  if (!total || target <= 0) return widths;
+  var out = [];
+  var sum = 0;
+  for (var c = 0; c < widths.length; c++) {
+    var value = equal ? target / widths.length : (widths[c] * target) / total;
+    value = Math.round(value * 100) / 100;
+    out.push(value);
+    sum += value;
+  }
+  out[out.length - 1] = Math.round((out[out.length - 1] + target - sum) * 100) / 100;
+  return out;
+}
 // 分页前记下每张表的表头：Paged.js 复制出的续页分片只带行、不带 <thead>，靠它补回去。
 var splitTableHeaders = {};
+// 需要「分布行」的表：分页前量出最高的一行，把所有行顶到同一高度。
+function distributeRowHeights(table, heights) {
+  var tallest = 0;
+  for (var i = 0; i < heights.length; i++) if (heights[i] > tallest) tallest = heights[i];
+  if (!tallest) return;
+  for (var r = 0; r < table.rows.length; r++) table.rows[r].style.height = tallest + 'px';
+}
 
 async function stabilizeTableLayouts() {
   var value = pageContentWidthValue();
@@ -211,12 +243,26 @@ async function stabilizeTableLayouts() {
     host.appendChild(probe);
     document.body.appendChild(host);
     var widths = measureColumnWidths(probe);
+    // 表宽按副本量：宽度模式（按内容 / 100% / 百分比 / 最小宽度）已经由 CSS 表达，副本量出来的
+    // offsetWidth 就是最终该有的表宽，不用在这里重算一遍规则。
+    var target = probe.offsetWidth;
+    var heights = measureRowHeights(probe);
     host.parentNode.removeChild(host);
     var total = 0;
     for (var w = 0; w < widths.length; w++) total += widths[w];
     if (!total) continue;
+    var distribute = table.getAttribute('data-table-distribute') || '';
+    var equalColumns = distribute.indexOf('columns') >= 0;
+    // 表宽和自然宽度只差一两像素时不做缩放：那是量取误差，按原样写死更稳（跨页断言盯的就是这个）。
+    if (total && (equalColumns || Math.abs(target - total) > 1)) {
+      widths = fitColumnWidths(widths, target > 0 ? target : total, equalColumns);
+      total = 0;
+      for (var f = 0; f < widths.length; f++) total += widths[f];
+      total = Math.round(total * 100) / 100;
+    }
     table.style.tableLayout = 'fixed';
     table.style.width = total + 'px';
+    if (distribute.indexOf('rows') >= 0) distributeRowHeights(table, heights);
     // 分片时 Paged.js 只浅拷贝 <table>（<colgroup> 不会跟到续页），行却是深拷贝，
     // 所以列宽写在单元格上：续页分片自带同一组列宽，列位置才能和第一片对齐。
     for (var r = 0; r < table.rows.length; r++) {

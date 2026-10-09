@@ -47,6 +47,7 @@ const paragraph = object({
   spaceBeforePt: number(0), spaceAfterPt: number(0), firstLineIndentChars: number(0), hangingIndentChars: number(0),
   indentLeftPt: number(0), indentRightPt: number(0), keepWithNext: boolean, pageBreakBefore: boolean,
   widows: number(1, false, true), orphans: number(1, false, true),
+  verticalAlign: choice('top', 'middle', 'bottom'),
 })
 const role: Check = (v, p, e) => {
   string(v, p, e)
@@ -57,6 +58,7 @@ const role: Check = (v, p, e) => {
 const style = object({
   role, label: string, basedOn: role, font, paragraph,
   border: object({ top: borderSide, right: borderSide, bottom: borderSide, left: borderSide, radiusPt: number(0) }),
+  grid: object({ horizontal: borderSide, vertical: borderSide }),
   background: object({ color }), paddingPt: number(0),
   numbering: object({ enabled: boolean, pattern: string, color, gapPt: number(0) }),
 }, ['role'])
@@ -66,6 +68,17 @@ const page = object({
   marginMm: object({ top: number(0), right: number(0), bottom: number(0), left: number(0) }, ['top', 'right', 'bottom', 'left']),
   header: furniture, footer: furniture, skipFurnitureOnFirstPage: boolean, background: color,
 })
+/** 表格整体版式。百分比的上限（100%）由 validate.ts 判，这里只保证是正数/非负数。 */
+const table = object({
+  widthMode: choice('auto', 'full'),
+  widthPercent: number(0, true),
+  minWidthPercent: number(0),
+  minHeightPt: number(0),
+  distributeColumns: boolean,
+  distributeRows: boolean,
+  repeatHeaderRow: boolean,
+  align: choice('left', 'center', 'right'),
+})
 const theme = object({
   schemaVersion: number(1, false, true), id: string, name: string, description: string,
   document: object({
@@ -74,6 +87,7 @@ const theme = object({
       { latinFamily: string, cjkFamily: string, fallbackFamilies, fontSizePt: number(0, true), lineHeight, textColor: color, background: color },
       ['fontSizePt', 'lineHeight', 'textColor'],
     ),
+    table,
   }, ['page', 'defaults']),
   styles: array(style),
 }, ['schemaVersion', 'id', 'name', 'document', 'styles'])

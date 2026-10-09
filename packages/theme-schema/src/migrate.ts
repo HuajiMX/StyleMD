@@ -58,7 +58,7 @@ export function migrateTheme(raw: unknown): MigrationResult {
     if (raw[key] !== undefined && (key === 'styles' ? !Array.isArray(raw[key]) : !isPlainObject(raw[key]))) throw new Error(`${key} 格式不正确`)
   }
   const document = isPlainObject(raw.document) ? raw.document : {}
-  for (const key of ['page', 'defaults']) {
+  for (const key of ['page', 'defaults', 'table']) {
     if (document[key] !== undefined && !isPlainObject(document[key])) throw new Error(`document.${key} 必须是对象`)
   }
   const page = isPlainObject(document.page) ? document.page : {}
@@ -90,6 +90,10 @@ export function migrateTheme(raw: unknown): MigrationResult {
       }
     }
   }
+
+  // v3 → v4：表格版式（document.table）与单元格垂直对齐（paragraph.verticalAlign）都是**可选**字段，
+  // 旧样式包不写就等于默认值（按内容自适应、左对齐、跨页重复标题行、单元格垂直居中以外全是 top），
+  // 与升级前的渲染结果逐像素一致，所以这里不补值、也不产出提示。
 
   if (!Array.isArray(raw.styles)) {
     notes.push('样式包缺少 styles 数组，已按空样式处理')

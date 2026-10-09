@@ -1,6 +1,7 @@
 import { describe, expect, it } from 'vitest'
 import { build, parseMarkdown, renderBody } from '@stylemd/core'
 import { getBuiltInTheme } from '@stylemd/presets'
+import { DEFAULT_TABLE } from '@stylemd/theme-schema'
 
 const theme = getBuiltInTheme('tech-document')!
 
@@ -21,6 +22,29 @@ describe('renderBody', () => {
     expect(html).toContain('<thead>')
     expect(html).toContain('<th data-role="table-header"')
     expect(html).toContain('<td data-role="table-cell"')
+  })
+
+  it('关掉跨页重复标题行后首行不进 thead，但仍是表头角色', () => {
+    const { tree } = parseMarkdown('| 列 | 值 |\n|:---|:---|\n| 甲 | 1 |')
+    const { html } = renderBody(tree, { table: { ...DEFAULT_TABLE, repeatHeaderRow: false } })
+    expect(html).not.toContain('<thead>')
+    expect(html).toContain('<th data-role="table-header"')
+    expect(html).toContain('<td data-role="table-cell"')
+  })
+
+  it('分布列给等宽 colgroup 并带分页器标记', () => {
+    const { tree } = parseMarkdown('| 列 | 值 |\n|:---|:---|\n| 甲 | 1 |')
+    const { html } = renderBody(tree, { table: { ...DEFAULT_TABLE, distributeColumns: true, distributeRows: true } })
+    expect(html).toContain('data-table-distribute="columns rows"')
+    expect(html).toContain('<colgroup><col style="width: 50%"><col style="width: 50%"></colgroup>')
+  })
+
+  it('列对齐：居中 / 右对齐直排，左对齐不写行内样式', () => {
+    const { tree } = parseMarkdown('| 左 | 中 | 右 |\n|:---|:---:|---:|\n| 甲 | 乙 | 丙 |')
+    const { html } = renderBody(tree)
+    expect(html).not.toContain('text-align: left')
+    expect(html).toContain('style="text-align: center"')
+    expect(html).toContain('style="text-align: right"')
   })
 
   it('默认转义原始 HTML，避免注入', () => {

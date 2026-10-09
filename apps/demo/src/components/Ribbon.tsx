@@ -1,4 +1,4 @@
-import type { ComputedStyles, RoleStyle, StyleTheme } from '@stylemd/theme-schema'
+import type { ComputedStyles, RoleStyle, StyleTheme, TableSpec } from '@stylemd/theme-schema'
 import type { EditorScheme } from '@stylemd/editor-theme'
 import { StyleGallery } from './StyleGallery'
 import { FileMenu } from './FileMenu'
@@ -15,10 +15,12 @@ import {
   ParagraphQuickGroup,
   RibbonGroup,
   StylePackGroup,
+  TableGroups,
   type StyleEditContext,
+  type TableEditContext,
 } from './ribbon-groups'
 
-export type RibbonTab = 'start' | 'edit' | 'page'
+export type RibbonTab = 'start' | 'edit' | 'page' | 'table'
 
 const TABS: { id: RibbonTab; label: string }[] = [
   { id: 'start', label: '开始' },
@@ -63,6 +65,10 @@ interface RibbonProps {
   onAutoSaveChange: (enabled: boolean) => void
   /** 预览里指针移动的计数（父文档感知不到指针进了 iframe，由预览 postMessage 通报）。 */
   previewHoverTick: number
+  /** 光标是否落在表格结构里：是才出现「表格」选项卡。 */
+  tableContext: boolean
+  onTableChange: (patch: Partial<TableSpec>) => void
+  onOpenBorderDialog: () => void
   schemes: EditorScheme[]
   activeSchemeId: string
   hiddenSchemeCount: number
@@ -91,6 +97,19 @@ export function Ribbon(props: RibbonProps) {
         onOpenDialog: props.onOpenDialog,
       }
     : undefined
+  const tableContext: TableEditContext | undefined = props.tableContext
+    ? {
+        theme,
+        computed,
+        onRoleChange: props.onRoleChange,
+        onTableChange: props.onTableChange,
+        onOpenDialog: props.onOpenDialog,
+        onOpenBorderDialog: props.onOpenBorderDialog,
+      }
+    : undefined
+  // 光标离开表格后「表格」选项卡会消失（App 同时把选中切回「开始」）；
+  // 这一层兜住同一次渲染里的空档，免得控制区先空一块。
+  const activeTab: RibbonTab = props.tab === 'table' && !tableContext ? 'start' : props.tab
 
   const statusChip =
     props.status.errors > 0
@@ -140,17 +159,33 @@ export function Ribbon(props: RibbonProps) {
             key={tab.id}
             type="button"
             role="tab"
-            aria-selected={props.tab === tab.id}
-            className={`ribbon-tab${props.tab === tab.id ? ' active' : ''}`}
+            aria-selected={activeTab === tab.id}
+            className={`ribbon-tab${activeTab === tab.id ? ' active' : ''}`}
             onClick={() => props.onTabChange(tab.id)}
           >
             {tab.label}
           </button>
         ))}
+        {/* 上下文选项卡：光标进表格才出现。位置排在常规选项卡右侧，与 Word 的「表布局」同一个读法。 */}
+        {tableContext ? (
+          <>
+            <span className="ribbon-tab-sep" aria-hidden="true" />
+            <button
+              type="button"
+              role="tab"
+              aria-selected={activeTab === 'table'}
+              className={`ribbon-tab context-tab${activeTab === 'table' ? ' active' : ''}`}
+              title="表格工具（光标在表格里时出现）"
+              onClick={() => props.onTabChange('table')}
+            >
+              表格
+            </button>
+          </>
+        ) : null}
       </nav>
 
       <div className="ribbon-body">
-        {props.tab === 'start' ? (
+        {activeTab === 'start' ? (
           <>
             <StylePackGroup
               theme={theme}
@@ -175,7 +210,7 @@ export function Ribbon(props: RibbonProps) {
           </>
         ) : null}
 
-        {props.tab === 'edit' ? (
+        {activeTab === 'edit' ? (
           <>
             <EditorSchemeGroup
               schemes={props.schemes}
@@ -193,7 +228,7 @@ export function Ribbon(props: RibbonProps) {
           </>
         ) : null}
 
-        {props.tab === 'page' ? (
+        {activeTab === 'page' ? (
           <>
             <PageGroup page={theme.document.page} onPageChange={props.onPageChange} />
             <FurnitureGroup
@@ -204,6 +239,8 @@ export function Ribbon(props: RibbonProps) {
             <DefaultsGroup defaults={theme.document.defaults} onDefaultsChange={props.onDefaultsChange} />
           </>
         ) : null}
+
+        {activeTab === 'table' && tableContext ? <TableGroups ctx={tableContext} /> : null}
       </div>
     </header>
   )

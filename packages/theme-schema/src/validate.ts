@@ -84,6 +84,26 @@ export function validateTheme(raw: unknown): ThemeValidationResult {
     }
   }
 
+  // 表格整体版式：宽度一律按"纸张内容区的百分比"算，100% 就是内容区满宽，不能再大。
+  const table = theme.document?.table
+  if (table) {
+    checkNonNegative(table.minWidthPercent, 'document.table.minWidthPercent', out)
+    checkNonNegative(table.minHeightPt, 'document.table.minHeightPt', out)
+    if (table.widthPercent !== undefined && (table.widthPercent <= 0 || table.widthPercent > 100)) {
+      out.errors.push(`document.table.widthPercent 必须在 1–100 之间（100 即纸张内容区宽度），当前为 ${table.widthPercent}`)
+    }
+    if (table.minWidthPercent !== undefined && table.minWidthPercent > 100) {
+      out.errors.push(`document.table.minWidthPercent 不能超过 100（纸张内容区宽度），当前为 ${table.minWidthPercent}`)
+    }
+    if (
+      table.widthPercent !== undefined &&
+      table.minWidthPercent !== undefined &&
+      table.minWidthPercent > table.widthPercent
+    ) {
+      out.warnings.push('document.table 的最小宽度大于表格宽度，排版时会以最小宽度为准')
+    }
+  }
+
   if (!defaults.latinFamily && !defaults.cjkFamily && (defaults.fallbackFamilies?.length ?? 0) === 0) {
     out.errors.push('document.defaults 至少要有一个字体槽（latinFamily / cjkFamily / fallbackFamilies）')
   }
@@ -155,6 +175,15 @@ export function validateTheme(raw: unknown): ThemeValidationResult {
       if (side === 'radiusPt' || !border) continue
       checkNonNegative((border as { widthPt?: number }).widthPt, `角色「${style.role}」${side} 边框线宽`, out)
       checkColor((border as { color?: string }).color, `角色「${style.role}」${side} 边框颜色`, out)
+    }
+    for (const [line, border] of Object.entries(style.grid ?? {})) {
+      if (!border) continue
+      checkNonNegative(
+        (border as { widthPt?: number }).widthPt,
+        `角色「${style.role}」${line === 'horizontal' ? '内部横线' : '内部竖线'}线宽`,
+        out,
+      )
+      checkColor((border as { color?: string }).color, `角色「${style.role}」${line} 格线颜色`, out)
     }
   }
 

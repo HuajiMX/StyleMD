@@ -1,4 +1,12 @@
-import type { BorderSpec, DocumentDefaults, PageSetup, RoleStyle, StyleTheme } from '@stylemd/theme-schema'
+import type {
+  BorderSpec,
+  DocumentDefaults,
+  PageSetup,
+  RoleStyle,
+  StyleTheme,
+  TableGridSpec,
+  TableSpec,
+} from '@stylemd/theme-schema'
 
 /** 样式编辑全部走不可变更新：每次改动产出一个新样式包，便于撤销与对比。 */
 
@@ -17,6 +25,9 @@ function mergeRole(existing: RoleStyle | undefined, patch: Partial<RoleStyle>): 
   }
   if (existing.border || patch.border) {
     merged.border = { ...existing.border, ...patch.border } as BorderSpec
+  }
+  if (existing.grid || patch.grid) {
+    merged.grid = { ...existing.grid, ...patch.grid } as TableGridSpec
   }
   if (existing.background || patch.background) {
     merged.background = { ...existing.background, ...patch.background }
@@ -65,4 +76,17 @@ export function updatePage(theme: StyleTheme, patch: Partial<PageSetup>): StyleT
 
 export function updateDefaults(theme: StyleTheme, patch: Partial<DocumentDefaults>): StyleTheme {
   return { ...theme, document: { ...theme.document, defaults: { ...theme.document.defaults, ...patch } } }
+}
+
+/**
+ * 表格整体版式（document.table）。patch 里显式给 undefined 的键会被删掉——
+ * 「宽度百分比」这类字段回到「没设置」和设成 0 是两回事，删除才等于回到按宽度模式走。
+ */
+export function updateTable(theme: StyleTheme, patch: Partial<TableSpec>): StyleTheme {
+  const table: TableSpec = { ...theme.document.table }
+  for (const [key, value] of Object.entries(patch)) {
+    if (value === undefined) delete (table as Record<string, unknown>)[key]
+    else Object.assign(table, { [key]: value })
+  }
+  return { ...theme, document: { ...theme.document, table } }
 }

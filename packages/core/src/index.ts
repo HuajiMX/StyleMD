@@ -47,12 +47,13 @@ export function build(markdown: string, theme: StyleTheme, options: BuildOptions
   const computed = resolveStyles(theme)
   const title = firstString(parsed.frontmatter.title) ?? options.title ?? theme.name
   const css = compileCss(computed, { title, date: options.date, includePage: options.includePage })
-  const bodyResult = renderBody(tree, { allowRawHtml: options.allowRawHtml })
+  const bodyResult = renderBody(tree, { allowRawHtml: options.allowRawHtml, table: computed.table })
   const documentResult = renderHtmlDocument(tree, {
     stylesheet: css,
     title,
     language: options.language,
     allowRawHtml: options.allowRawHtml,
+    table: computed.table,
   })
 
   return {

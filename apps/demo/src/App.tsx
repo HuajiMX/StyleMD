@@ -9,6 +9,7 @@ import {
   type PageSetup,
   type RoleStyle,
   type StyleTheme,
+  type TableSpec,
 } from '@stylemd/theme-schema'
 import pagedPolyfill from '@pagedjs-polyfill?raw'
 import sampleMarkdown from '../../../examples/sample-thesis.md?raw'
@@ -20,6 +21,7 @@ import { Ribbon, type RibbonTab } from './components/Ribbon'
 import { SourcePane } from './components/SourcePane'
 import { StatusBar, type ViewMode } from './components/StatusBar'
 import { StyleDialog } from './components/StyleDialog'
+import { TableBorderDialog } from './components/TableBorderDialog'
 import {
   blankDocument,
   documentTitle,
@@ -38,7 +40,7 @@ import { formatSavedAt, loadAutoSave, loadSession, saveAutoSave, saveSession } f
 import type { SourceEditorHandle } from './lib/editor/types'
 import { activeScheme, applyScheme, loadSchemeLibrary, saveSchemeLibrary } from './lib/editor/scheme'
 import { SCHEME_RIBBON_LIMIT, markSchemeUsed, orderSchemesByRecent, type EditorSchemeLibrary } from '@stylemd/editor-theme'
-import { clearRoleGroup, resetRoleStyle, updateDefaults, updatePage, upsertRoleStyle } from './lib/themeOps'
+import { clearRoleGroup, resetRoleStyle, updateDefaults, updatePage, updateTable, upsertRoleStyle } from './lib/themeOps'
 import { useDebounced } from './lib/useDebounced'
 
 const MIN_NAV_WIDTH = 160
@@ -76,6 +78,7 @@ export function App() {
   }, [applyTheme])
 
   const [dialogRole, setDialogRole] = useState<string | null>(null)
+  const [borderDialogOpen, setBorderDialogOpen] = useState(false)
   const [schemeDialogOpen, setSchemeDialogOpen] = useState(false)
   const [furnitureArea, setFurnitureArea] = useState<'header' | 'footer' | null>(null)
   /** 打开页眉页脚弹窗时的整页设置；「取消」用它回滚即时改动。 */
@@ -206,6 +209,20 @@ export function App() {
   const roleSpans = useMemo(() => collectRoleSpans(debouncedMarkdown, { autoDetect }), [debouncedMarkdown, autoDetect])
   const cursorRole = useMemo(() => roleAtOffset(roleSpans, cursorOffset), [roleSpans, cursorOffset])
   const activeRole = cursorRole ?? 'body.text'
+  /**
+   * 光标是不是落在表格结构里（整表 / 表头单元格 / 内容单元格）。
+   * 表题不算——那是表格外面的段落，光标停在表题上不该弹出表格工具。
+   */
+  const inTable = cursorRole === 'table' || cursorRole === 'table.header' || cursorRole === 'table.cell'
+  const inTableRef = useRef(false)
+  // 光标进表格就自动切到「表格」选项卡，离开则收起并回到「开始」。只认"进/出"这一次变化：
+  // 在表格里挪光标（逐行上下移动）不该把用户手动切回的其他选项卡又抢过去。
+  useEffect(() => {
+    const was = inTableRef.current
+    if (was === inTable) return
+    inTableRef.current = inTable
+    setRibbonTab(inTable ? 'table' : (current) => (current === 'table' ? 'start' : current))
+  }, [inTable])
   const cursorLine = useMemo(() => markdown.slice(0, cursorOffset).split('\n').length - 1, [markdown, cursorOffset])
   const outline = useMemo(() => documentOutline(roleSpans, debouncedMarkdown), [roleSpans, debouncedMarkdown])
   const [activeOutlineOffset, setActiveOutlineOffset] = useState<number | null>(null)
@@ -357,6 +374,11 @@ export function App() {
 
   const handleDefaultsChange = useCallback((patch: Partial<DocumentDefaults>) => {
     changeTheme((current) => updateDefaults(current, patch))
+  }, [changeTheme])
+
+  /** 表格整体版式（document.table）：宽度模式、最小尺寸、分布行列、跨页重复标题行、整体对齐。 */
+  const handleTableChange = useCallback((patch: Partial<TableSpec>) => {
+    changeTheme((current) => updateTable(current, patch))
   }, [changeTheme])
 
   const handleExportTheme = useCallback(() => {
@@ -583,6 +605,9 @@ export function App() {
         autoSave={autoSave}
         onAutoSaveChange={handleAutoSaveChange}
         previewHoverTick={previewHoverTick}
+        tableContext={inTable}
+        onTableChange={handleTableChange}
+        onOpenBorderDialog={() => setBorderDialogOpen(true)}
         schemes={ribbonSchemes}
         activeSchemeId={currentScheme.id}
         hiddenSchemeCount={Math.max(0, schemeLibrary.schemes.length - ribbonSchemes.length)}
@@ -694,6 +719,15 @@ export function App() {
           onClearGroup={handleClearGroup}
           onResetRole={handleResetRole}
           onClose={() => setDialogRole(null)}
+        />
+      ) : null}
+
+      {borderDialogOpen ? (
+        <TableBorderDialog
+          theme={theme}
+          computed={result.computed}
+          onRoleChange={handleRoleChange}
+          onClose={() => setBorderDialogOpen(false)}
         />
       ) : null}
 

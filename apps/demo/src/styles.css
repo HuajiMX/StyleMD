@@ -205,6 +205,12 @@ input[type='radio']:focus-visible {
 .ribbon-tab:hover { background: #eceff4; }
 .ribbon-tab.active { color: var(--accent); border-bottom-color: var(--accent); font-weight: 600; }
 
+/* 上下文选项卡（表格）：只在光标进表格时出现，跟常规选项卡之间留一条竖线切一下。
+   它是"跟着光标出现"的，所以底色比常规选项卡淡一档，选中时也一样染强调色。 */
+.ribbon-tab-sep { flex: 0 0 auto; align-self: center; width: 1px; height: 16px; margin: 0 4px; background: var(--line-strong); }
+.ribbon .ribbon-tab.context-tab { color: var(--accent); }
+.ribbon .ribbon-tab.context-tab:not(.active) { background: var(--accent-soft); }
+
 /* 「文件」选项卡与它的下拉菜单 */
 .file-menu { display: inline-flex; align-items: stretch; }
 .ribbon-tab.file-tab { display: inline-flex; align-items: center; gap: 4px; color: var(--accent); font-weight: 600; }
@@ -633,6 +639,76 @@ body.is-dragging-pane .preview-iframe { pointer-events: none; }
   white-space: nowrap;
 }
 .scheme-more:hover { background: var(--panel-alt); color: var(--accent); }
+
+/* ---------- 表格选项卡：九宫格对齐 + 边框窗口 ---------- */
+.rgroup-inline-label { flex: 0 0 auto; color: var(--ink-2); font-size: 11px; white-space: nowrap; }
+
+/* 九宫格对齐：3 列（左/中/右）× 3 行（上/中/下）。
+   选择器都得带 .rgroup 前缀：`.ribbon button`（0,1,1）会把内边距、边框、圆角一起压掉。 */
+.rgroup .cell-align-grid {
+  display: grid; grid-template-columns: repeat(3, 17px); grid-auto-rows: 17px; gap: 1px;
+  flex: 0 0 auto; padding: 1px; border-radius: 5px; background: var(--line);
+}
+.rgroup .cell-align-cell {
+  display: inline-flex; align-items: center; justify-content: center;
+  padding: 0; border: 0; border-radius: 3px; background: var(--panel);
+  color: var(--ink-2); cursor: pointer;
+}
+.rgroup .cell-align-cell:hover { background: var(--accent-soft); color: var(--accent); }
+.rgroup .cell-align-cell.on { background: var(--accent-soft); color: var(--accent); }
+.rgroup .cell-align-cell.on svg rect { stroke-width: 1.8; }
+
+/* 布局那一枚是"面板选择器"：表头 / 内容竖着排成一列（.seg.vertical），
+   跟右边的九宫格、内边距分开得更清楚，也省一条横向空间。 */
+.seg.vertical { flex-direction: column; gap: 1px; }
+.rgroup .seg.vertical .seg-button {
+  justify-content: center; min-width: 40px;
+  padding: 1px 7px; border-radius: 3px; font-size: 11px; line-height: 1.6;
+}
+
+/* 边框窗口：预设胶囊 + 「点哪条边就改哪条边」的预览图。 */
+.border-dialog .field-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+/* 选择器带 .border-dialog 前缀：`.field-chip`（0,1,0）的 align-items: baseline 会把
+   图标压到文字基线上，看着就是"图标没跟文字对齐"；这里必须比它权重高。 */
+.border-dialog .field-chip.preset-chip { align-items: center; gap: 7px; }
+.border-dialog .field-chip.preset-chip svg { flex: 0 0 auto; width: 15px; height: 15px; }
+
+.border-preview {
+  display: grid;
+  grid-template-columns: 38px 200px 38px 108px;
+  grid-template-rows: 22px 104px 22px;
+  gap: 5px 8px; width: max-content;
+}
+.bp-side {
+  display: inline-flex; align-items: center; justify-content: center;
+  border: 1px solid var(--line-strong); border-radius: 4px;
+  background: var(--panel); color: var(--ink-2);
+  font: inherit; font-size: 11px; cursor: pointer;
+}
+/* 悬停只用中性底色：悬停要是也染强调色，就和下面「这条边当前有线」的选中态分不出来了
+   （刚点完的那颗键正好还在指针底下）。 */
+.bp-side:hover { background: #e6eaf1; border-color: var(--line-strong); color: var(--ink); }
+/* 这一条边当前有线：方向键染上强调色，开 / 关一眼看得出 */
+.bp-side.on {
+  background: var(--accent-soft); border-color: var(--accent-line);
+  color: var(--accent); font-weight: 600;
+}
+.bp-top { grid-area: 1 / 2; }
+.bp-left { grid-area: 2 / 1; }
+.bp-right { grid-area: 2 / 3; }
+.bp-bottom { grid-area: 3 / 2; }
+/* 格线三条竖着排在预览图右边：它们是"内部"的线，跟四周的外框分开摆 */
+.bp-inner { grid-area: 1 / 4 / 4 / 5; display: flex; flex-direction: column; gap: 5px; }
+.bp-inner .bp-side { flex: 1 1 0; }
+.bp-canvas {
+  grid-area: 2 / 2;
+  display: block; padding: 12px;
+  border: 1px dashed var(--line); border-radius: 6px; background: var(--specimen);
+}
+.bp-table { display: flex; flex-direction: column; width: 100%; height: 100%; background: var(--panel); }
+.bp-row { display: flex; flex: 1 1 0; min-height: 0; }
+.bp-cell { flex: 1 1 0; min-width: 0; }
+.bp-head { background: var(--specimen); }
 
 /* ---------- 页眉页脚弹窗：左中右三段 + 快捷域 ---------- */
 .furniture-dialog { min-width: 560px; min-height: 320px; }
