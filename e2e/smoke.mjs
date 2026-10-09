@@ -512,6 +512,17 @@ async function main() {
     )
     check('当前结构的样式卡片自动高亮', true, `高亮：${activeCard}`)
 
+    // 4a0. 页眉页脚不是文档结构（Markdown 里没有这种节点），排版入口在「页面」页的
+    //      「页眉页脚」组，不该在结构画廊里再摆一张卡片。
+    const galleryLabels = await page
+      .locator('.style-card')
+      .evaluateAll((nodes) => nodes.map((node) => node.getAttribute('aria-label')))
+    check(
+      '结构画廊里没有页眉页脚',
+      galleryLabels.length > 0 && !galleryLabels.includes('页眉') && !galleryLabels.includes('页脚'),
+      `${galleryLabels.length} 个结构：${galleryLabels.join(' / ')}`,
+    )
+
     // 4a. 「样式」栏跟「高亮配色」同一套做法：白底只留一整张卡片，卡片之间用竖线切，
     //     各自带框的小白块摞在白底上会糊成一片，选中态改为整块染底。
     const stylePanelCard = await page.locator('.style-gallery').evaluate((node) => {

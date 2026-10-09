@@ -80,11 +80,18 @@ function scrollGalleryByWheel(event: ReactWheelEvent<HTMLDivElement>) {
   node.scrollLeft += event.deltaY * (event.deltaMode === 1 ? 16 : 1)
 }
 
-/** 横向排开的全部样式，用于「开始」选项卡。 */
+/**
+ * 画廊只摆**文档里真实存在的结构**。页眉页脚（`page.header` / `page.footer`）是页面装饰，
+ * 不是 Markdown 解析出来的节点，正文里根本没有这种角色；它们有自己的入口——「页面」页的
+ * 「页眉页脚」组，那儿既能编辑内容也能开样式窗口。摆在结构画廊里只会让人以为文档里有这东西。
+ */
+const DOCUMENT_ROLES = ROLES.filter((role) => role.category !== '页面')
+
+/** 横向排开的全部样式（文档结构），用于「开始」选项卡。 */
 export function StyleGallery({ theme, computed, activeRole, onPick }: StyleGalleryProps) {
   return (
     <div className="style-gallery" onWheel={scrollGalleryByWheel}>
-      {ROLES.map((role) => (
+      {DOCUMENT_ROLES.map((role) => (
         <StyleCard
           key={role.id}
           theme={theme}
