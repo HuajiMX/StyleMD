@@ -35,6 +35,7 @@
 | 布局的面板 | 表头与内容**共用一个面板**，上面一排「表头 / 内容」切换键决定改哪一类 | 两边要设的东西完全一样（九宫格 + 内边距），摆两块一样的面板只是把工具带撑宽；切换键带 `aria-pressed`，谁被选中一眼看得见。九宫格按钮的无障碍名仍是「表头左上 / 内容右中」，切换后仍然指得清 |
 | 切换键的排布 | 竖着排成一列（`.seg.vertical`） | 做成一枚"面板选择器"的观感，跟右边的九宫格、内边距分开得更清楚，也省一条横向空间 |
 | 控件的对齐 | 只修预设胶囊：`.border-dialog .field-chip.preset-chip` 覆盖 `.field-chip` 的 `align-items: baseline` | `.field-chip` 的基线对齐会把图标压到文字基线上，看着就是"图标没跟文字对齐"。**表单标签不定宽**——工具带本来就紧，控件按各自宽度排更紧凑（试过定宽 62px 对齐左边缘，撤掉了） |
+| 样式窗口的页签 | 表格类结构（`table` / `table.header` / `table.cell`）**不显示「边框与底纹」页**；「编号」页只给 1–6 级标题 | 表格的线已经归「表格」选项卡按边设（相邻单元格共用一条边），样式窗口里那套"四条边各自独立"的表单对它们只会误导——与其在里面写一段指路说明，不如把页收起来（底纹与内边距在「表格」选项卡的样式 / 布局栏里有）。编号只有标题用得上，其余结构显示一个用不了的页只是噪声；顺带把计数器从 1–3 级扩到 1–6 级，让开放出来的页真能用 |
 
 ## 代码落点
 
@@ -43,14 +44,14 @@
 | `packages/theme-schema/src/types.ts` | `TableSpec` / `ComputedTableLayout`、`document.table`、`ParagraphSpec.verticalAlign`、`schemaVersion` 4 |
 | `packages/theme-schema/src/{defaults,shape,validate,migrate}.ts` | `DEFAULT_TABLE` / `fillTableSpec`；新字段的 shape 与取值范围校验（百分比 1–100）；v3 → v4 都是可选字段，不补值 |
 | `packages/core/src/style/resolve.ts` | `verticalAlign` 默认值、`ComputedStyles.table` |
-| `packages/core/src/style/compile-css.ts` | `tableLayoutBlock`（宽度 / 最小尺寸 / 整体对齐 / 分布列）、`tableGridOf`（格线的唯一读法）、`tableGridBlock`（共用边只画一次）、单元格 `vertical-align`；单元格角色的四边由 `GRID_BORDER_ROLES` 排除 |
+| `packages/core/src/style/compile-css.ts` | `tableLayoutBlock`（宽度 / 最小尺寸 / 整体对齐 / 分布列）、`tableGridOf`（格线的唯一读法）、`tableGridBlock`（共用边只画一次）、单元格 `vertical-align`；单元格角色的四边由 `GRID_BORDER_ROLES` 排除；标题计数器从 1–3 级扩到 1–6 级（`HEADING_COUNTERS` / `headingCounterResets`） |
 | `packages/core/src/render/html.ts` | 表格上的 `data-table-distribute` 标记、分布列的等宽 `<colgroup>`、跨页标题行开关、列对齐只在居中 / 右对齐时写行内样式 |
 | `packages/renderer-paged/src/index.ts` | 分页前置：目标表宽改用副本量出来的 `offsetWidth`，列宽按目标等比缩放或等分（末列补差），`data-table-distribute` 里的 `rows` 触发行高均分 |
 | `apps/demo/src/lib/tableBorders.ts` | 七条边（四条外框 + 表头下线 + 内部横线 / 竖线）的读 / 写 / 开 / 关、四个预设、"手里这条线"的取法（功能区与边框窗口共用一份） |
 | `apps/demo/src/lib/themeOps.ts` | `updateTable`（能删键，让"没设置"和"设成 0"分得开） |
 | `apps/demo/src/components/{Ribbon,ribbon-groups,align-control,icons,fields}.tsx` | 上下文选项卡、五个栏目、九宫格控件、表格图标、带按下态的图标按钮 |
 | `apps/demo/src/components/TableBorderDialog.tsx` | 边框和底纹窗口（预设 / 手里这条线 / 七条边逐条开 / 关 / 真表格预览 / 底纹与内边距） |
-| `apps/demo/src/components/StyleDialog.tsx` | 单元格 / 表头角色的「边框与底纹」页加一段说明：表格的线是相邻单元格共用的，按边设置请走「表格」选项卡 |
+| `apps/demo/src/components/StyleDialog.tsx` | 页签按结构给：表格类结构去掉「边框与底纹」页，非标题结构去掉「编号」页（当前页被收起时回落到第一页） |
 | `apps/demo/src/{App.tsx,styles.css}` | 光标进表格的联动、表格版式改写入口、选项卡与窗口的样式 |
 | 测试 | `validate.test.ts` 百分比范围；`compile-css.test.ts` 表格版式、单元格垂直对齐、格线块（三条规则 + 旧包兜底）；`render.test.ts` thead 开关、colgroup、列对齐；`e2e/smoke.mjs` 28 项端到端 |
 
@@ -58,10 +59,10 @@
 
 | 命令 | 结果 |
 |:---|:---|
-| `npm.cmd test` | 18 个文件、**171 项全部通过**（新增 7 条：表格版式 / 百分比宽度 / 单元格垂直对齐 / 表格 HTML 三条 / 格线块三条） |
+| `npm.cmd test` | 18 个文件、**172 项全部通过**（新增 8 条：表格版式 / 百分比宽度 / 单元格垂直对齐 / 表格 HTML 三条 / 格线块三条 / 1–6 级标题编号） |
 | `npm.cmd run typecheck` | 通过 |
 | `npm.cmd run build` | 成功 |
-| `node e2e/smoke.mjs` | **136/136**（新增 25 项，见下） |
+| `node e2e/smoke.mjs` | **139/139**（新增 28 项，见下） |
 | `node e2e/export-check.mjs` | 通过（原生 HTML 与 Paged.js 两条导出路径都出 2 页 PDF，页眉页脚与缩放结论不变） |
 | `npm.cmd run desktop:smoke` | **SMOKE OK（17/17）**（沙箱外执行；导出 PDF 落盘 526 KB / 2 页，与预览一致） |
 
@@ -88,6 +89,9 @@
 | 属性：表格右对齐贴到内容区右边 | 右边缘差 ≤2px |
 | 属性：关掉跨页重复标题行后首行不进 thead | thead 数量 0 |
 | 属性：表格对齐图标是页框 + 色块，不是三个实心方块 | 页框 fill=none / 色块 fill=rgb(70, 83, 106) |
+| 表格类结构的样式窗口不再有「边框与底纹」页 | 表格单元格的页签：字体 / 段落 / 进阶 |
+| 非标题结构没有「编号」页，普通结构仍有「边框与底纹」 | 正文段落的页签：字体 / 段落 / 边框与底纹 / 进阶 |
+| 1–6 级标题有「编号」页 | 四级标题的页签：字体 / 段落 / 边框与底纹 / 编号 / 进阶 |
 | 表格工具里的改动可以用「撤销」整批还原 | 还原回进表格前的几何 |
 | 光标移出表格后选项卡隐去并回到「开始」 | 开始选项卡选中 |
 | 另有 4 项随 4e 一起调整（画廊自动滚到「表格」卡片等） | — |
@@ -107,6 +111,6 @@
 - **列为居中 / 右对齐的单元格不受样式包的对齐影响**：那是内容直排，优先级高于样式包（有意如此）。
 - **单元格角色的四边不再各画各的**：`table.cell` / `table.header` 的边框由格线块统一接管
   （外框四条、表头下线、内部横线 / 竖线）；旧样式包写在单元格四边上的值仍按"右边框当竖线、
-  下边框当横线"兜底，左 / 上两条由相邻单元格的线代表。样式窗口里那两个角色的「边框与底纹」页
-  因此加了一段说明，指路到「表格」选项卡。
+  下边框当横线"兜底，左 / 上两条由相邻单元格的线代表。表格类结构的样式窗口因此不再显示
+  「边框与底纹」页——底纹与内边距在「表格」选项卡的样式 / 布局栏里改。
 - 内置预设没有改渲染：表格版式的默认值（按内容宽度、左对齐、跨页重复标题行）与原行为一致。

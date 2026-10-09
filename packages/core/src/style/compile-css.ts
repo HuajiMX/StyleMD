@@ -223,8 +223,21 @@ function numberingContent(pattern: string, counter: string): string {
   return parts.join(' ') || `counter(${counter})`
 }
 
+/** 支持自动编号的标题层级：1–6 级（样式窗口的「编号」页也只给这六级开放）。 */
+const HEADING_COUNTERS = [1, 2, 3, 4, 5, 6].map((level) => `stylemd-heading-${level}`)
+
 function counterForRole(role: string): string | undefined {
-  return /^heading\.[1-3]$/.test(role) ? `stylemd-${cssRoleName(role)}` : undefined
+  return HEADING_COUNTERS.some((name) => name === `stylemd-${cssRoleName(role)}`) ? `stylemd-${cssRoleName(role)}` : undefined
+}
+
+/**
+ * 标题计数器的重置规则：正文把 1–6 级全部清零；标题 N 把它之后的层级清零，
+ * 子标题才会重新从 1 开始编号。
+ */
+function headingCounterResets(): string[] {
+  return [1, 2, 3, 4, 5].map(
+    (level) => `[data-role="heading-${level}"] { counter-reset: ${HEADING_COUNTERS.slice(level).join(' ')}; }`,
+  )
 }
 
 /** 角色块 + 它用到的 @font-face；块为空（行内角色没声明任何字体）时不带出没用的 face。 */
@@ -408,9 +421,8 @@ export function compileCss(styles: ComputedStyles, options: CompileCssOptions = 
   chunks.push(
     [
       'html, body { margin: 0; padding: 0; }',
-      `body {\n${bodyFamily ? `  ${bodyFamily}\n` : ''}  font-size: ${pt(styles.defaults.fontSizePt)};\n  line-height: ${bodyLineHeight};\n  color: ${styles.defaults.textColor};\n  background: ${styles.defaults.background ?? '#ffffff'};\n  counter-reset: stylemd-heading-1 stylemd-heading-2 stylemd-heading-3;\n}`,
-      '[data-role="heading-1"] { counter-reset: stylemd-heading-2 stylemd-heading-3; }',
-      '[data-role="heading-2"] { counter-reset: stylemd-heading-3; }',
+      `body {\n${bodyFamily ? `  ${bodyFamily}\n` : ''}  font-size: ${pt(styles.defaults.fontSizePt)};\n  line-height: ${bodyLineHeight};\n  color: ${styles.defaults.textColor};\n  background: ${styles.defaults.background ?? '#ffffff'};\n  counter-reset: ${HEADING_COUNTERS.join(' ')};\n}`,
+      ...headingCounterResets(),
       'img[data-role="image"] { max-width: 100%; }',
       'img { height: auto; break-inside: avoid; }',
       'pre { white-space: pre-wrap; overflow-wrap: anywhere; }',

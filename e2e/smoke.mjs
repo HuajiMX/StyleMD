@@ -1041,6 +1041,33 @@ async function main() {
       `页框 fill=${alignIcons[0]?.frameFill} / 色块 fill=${alignIcons[0]?.blockFill}`,
     )
 
+    // 样式窗口的页签按结构给：表格类结构没有「边框与底纹」页（线归「表格」选项卡按边设），
+    // 「编号」只给 1–6 级标题。
+    const dialogTabsOf = async (cardLabel) => {
+      await page.getByRole('tab', { name: '开始' }).click()
+      await page.locator(`.style-card[aria-label="${cardLabel}"]`).first().click()
+      const dialog = page.locator('.style-dialog[role="dialog"]')
+      await until(async () => ((await dialog.count()) > 0 ? dialog : null), { label: `样式窗口打开：${cardLabel}` })
+      const tabs = await dialog.locator('.dialog-tab').allTextContents()
+      await dialog.getByRole('button', { name: '关闭样式窗口' }).click()
+      await until(async () => ((await dialog.count()) === 0 ? true : null), { label: `样式窗口关闭：${cardLabel}` })
+      return tabs
+    }
+    const cellTabs = await dialogTabsOf('表格单元格')
+    check(
+      '表格类结构的样式窗口不再有「边框与底纹」页',
+      !cellTabs.includes('边框与底纹') && cellTabs.includes('字体') && cellTabs.includes('段落'),
+      `表格单元格的页签：${cellTabs.join(' / ')}`,
+    )
+    const bodyTabs = await dialogTabsOf('正文段落')
+    check(
+      '非标题结构没有「编号」页，普通结构仍有「边框与底纹」',
+      !bodyTabs.includes('编号') && bodyTabs.includes('边框与底纹'),
+      `正文段落的页签：${bodyTabs.join(' / ')}`,
+    )
+    const headingTabs = await dialogTabsOf('四级标题')
+    check('1–6 级标题有「编号」页', headingTabs.includes('编号'), `四级标题的页签：${headingTabs.join(' / ')}`)
+
     // 表格工具的全部改动走的是同一条撤销链：用「撤销」还原到进表格前的样子，别留给后面的断言。
     await page.getByRole('tab', { name: '编辑' }).click()
     const undoButton = ribbon.getByRole('button', { name: '撤销样式修改' })

@@ -92,6 +92,23 @@ describe('compileCss', () => {
     expect(css).toContain(':not([data-numbering="off"])::before')
   })
 
+  it('标题自动编号覆盖 1–6 级，父标题把更深的层级清零', () => {
+    const custom = structuredClone(tech)
+    custom.styles.push({
+      role: 'heading.4',
+      basedOn: 'body.text',
+      numbering: { enabled: true, pattern: '（{n}）', gapPt: 2 },
+    })
+    const css = compileCss(resolveStyles(custom))
+    expect(css).toContain(
+      'counter-reset: stylemd-heading-1 stylemd-heading-2 stylemd-heading-3 stylemd-heading-4 stylemd-heading-5 stylemd-heading-6;',
+    )
+    expect(css).toContain('[data-role="heading-3"] { counter-reset: stylemd-heading-4 stylemd-heading-5 stylemd-heading-6; }')
+    expect(css).toContain('[data-role="heading-5"] { counter-reset: stylemd-heading-6; }')
+    expect(css).toMatch(/\[data-role="heading-4"\] \{[\s\S]*?counter-increment: stylemd-heading-4;/)
+    expect(css).toContain('counter(stylemd-heading-4)')
+  })
+
   it('三线表：只有上下框线加表头底线', () => {
     const css = compileCss(resolveStyles(thesis))
     expect(css).toContain('[data-role="table"] {')

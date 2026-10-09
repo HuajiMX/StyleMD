@@ -56,6 +56,23 @@ const SIDES = [
   { key: 'left' as const, label: '左' },
 ]
 
+/**
+ * 表格类结构的线归「表格」选项卡按边设置（相邻单元格共用一条边，见 lib/tableBorders.ts），
+ * 样式窗口里那套"四条边各自独立"的表单对它们没有意义，直接把「边框与底纹」页收起来。
+ */
+const TABLE_ROLES_WITHOUT_BORDER_TAB = new Set(['table', 'table.header', 'table.cell'])
+
+/** 自动编号只对标题有意义，1–6 级以外不显示「编号」页（编译器也只给这六级计数器）。 */
+const NUMBERED_HEADING_ROLES = new Set(['heading.1', 'heading.2', 'heading.3', 'heading.4', 'heading.5', 'heading.6'])
+
+function dialogTabsFor(role: string): typeof DIALOG_TABS {
+  return DIALOG_TABS.filter((item) => {
+    if (item.id === 'border') return !TABLE_ROLES_WITHOUT_BORDER_TAB.has(role)
+    if (item.id === 'numbering') return NUMBERED_HEADING_ROLES.has(role)
+    return true
+  })
+}
+
 const MIN_WIDTH = 620
 /** 预览区和页脚是固定高度的，窗口再小也要给表单留出空间。 */
 const MIN_HEIGHT = 380
@@ -109,6 +126,9 @@ export function StyleDialog(props: StyleDialogProps) {
   const resolved = resolvedStyle(computed, role)
   const explicit = explicitStyle(theme, role)
   const definition = ROLES.find((item) => item.id === role)
+  // 表格类结构没有「边框与底纹」页、非标题没有「编号」页；当前页被收起来时回落到第一页。
+  const availableTabs = dialogTabsFor(role)
+  const activeTab: DialogTab = availableTabs.some((item) => item.id === tab) ? tab : (availableTabs[0]?.id ?? 'font')
   // hook 必须在下面那个「未知角色」的提前 return 之前调用
   const catalog = useFontCatalog()
 
@@ -532,17 +552,6 @@ export function StyleDialog(props: StyleDialogProps) {
     ),
     border: (
       <>
-        {/* 表格单元格的边是相邻单元格共用的，不是四条独立的边：这里的四边对表格格线不生效，
-            统一在「表格」选项卡的边框里按"边"设置。 */}
-        {role === 'table.cell' || role === 'table.header' ? (
-          <Section title="表格格线" note="相邻单元格共用一条边">
-            <span className="section-text">
-              表格里的线不像普通结构那样每个盒子各画四条：单元格紧密堆积，内部横线与内部竖线是相邻单元格
-              共用的同一条。{role === 'table.header' ? '这里设置的下边框就是「表头下线」；' : ''}
-              其余的外框、内部线请在「表格」选项卡的「边框」栏（或「边框和底纹…」窗口）里按边设置。
-            </span>
-          </Section>
-        ) : null}
         <Section title="边框" note="样式 / 线宽 pt / 颜色">
           <Row>
             {SIDES.map((side) => {
@@ -633,7 +642,7 @@ export function StyleDialog(props: StyleDialogProps) {
     ),
     numbering: (
       <>
-        <Section title="章节编号" note="对 1–3 级标题生效，{n} 代表序号">
+        <Section title="章节编号" note="对 1–6 级标题生效，{n} 代表序号">
           <Row>
             <ToggleChip
               label="启用自动编号"
@@ -726,14 +735,14 @@ export function StyleDialog(props: StyleDialogProps) {
         </header>
 
         <nav className="dialog-tabs" role="tablist" aria-label="样式类别">
-          {DIALOG_TABS.map((item) => (
+          {availableTabs.map((item) => (
             <button
               key={item.id}
               type="button"
               role="tab"
-              aria-selected={tab === item.id}
+              aria-selected={activeTab === item.id}
               title={item.hint}
-              className={`dialog-tab${tab === item.id ? ' active' : ''}`}
+              className={`dialog-tab${activeTab === item.id ? ' active' : ''}`}
               onClick={() => setTab(item.id)}
             >
               {item.label}
@@ -743,7 +752,7 @@ export function StyleDialog(props: StyleDialogProps) {
 
         <div className="dialog-body" ref={bodyRef}>
           <div className="form">
-            {tabBody[tab]}
+            {tabBody[activeTab]}
             {/* 预览放在主体表单后面，每个选项卡里都有；不固定在窗口底部。 */}
             <Section title="预览" note="用当前计算样式渲染，不进分页器">
               <div className="sample-box">
