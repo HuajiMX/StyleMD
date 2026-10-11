@@ -104,7 +104,6 @@ export function TableBorderDialog({ theme, computed, onRoleChange, onClose }: Ta
       >
         <header className="dialog-head" onPointerDown={beginDrag} title="按住拖动窗口">
           <h2 className="dialog-title">边框和底纹</h2>
-          <span className="dialog-sub">先调好手里的线，再点预设或点预览图上的边；改动即时生效</span>
           <button type="button" className="dialog-close" aria-label="关闭边框和底纹窗口" onClick={onClose}>
             ✕
           </button>
@@ -112,7 +111,7 @@ export function TableBorderDialog({ theme, computed, onRoleChange, onClose }: Ta
 
         <div className="dialog-body">
           <div className="form">
-            <Section title="设置" note="点一下按手里的线整套应用">
+            <Section title="设置">
               <div className="field-chips">
                 {BORDER_PRESETS.map((preset) => (
                   <button
@@ -129,7 +128,7 @@ export function TableBorderDialog({ theme, computed, onRoleChange, onClose }: Ta
               </div>
             </Section>
 
-            <Section title="边框线" note="这里的线不会自动应用，点下面的边线或上面的预设才刷上去">
+            <Section title="边框线" note="选择样式后在下方预览中点击对应边框以刷上样式">
               <Row>
                 <Field label="线型" inline>
                   <SelectInput
@@ -163,7 +162,7 @@ export function TableBorderDialog({ theme, computed, onRoleChange, onClose }: Ta
               </Row>
             </Section>
 
-            <Section title="预览" note="点某条边：没线就刷上手里的线，有线就撤掉">
+            <Section title="预览">
               <div className="border-preview">
                 {OUTER_KEYS.map(({ id, area }) => (
                   <button
@@ -218,13 +217,9 @@ export function TableBorderDialog({ theme, computed, onRoleChange, onClose }: Ta
                   ))}
                 </span>
               </div>
-              <p className="section-text">
-                表格的格线是相邻单元格共用的：内部横线、内部竖线各只有一条，最后一行 / 最后一列不画线，
-                外侧交给外框——所以这里按"边"设置，而不是给每个单元格各画四条。
-              </p>
             </Section>
 
-            <Section title="底纹与内边距" note="表头与内容单元格分别设置">
+            <Section title="底纹与内边距">
               <Row>
                 {(
                   [
@@ -252,7 +247,6 @@ export function TableBorderDialog({ theme, computed, onRoleChange, onClose }: Ta
                     </span>
                   </Field>
                 ))}
-                <span className="dialog-note">左边是底纹色，右边是单元格内边距</span>
               </Row>
             </Section>
           </div>
