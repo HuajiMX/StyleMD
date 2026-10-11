@@ -794,7 +794,10 @@ body.is-dragging-pane .preview-iframe { pointer-events: none; }
   outline: none;
 }
 .dialog-head {
-  display: flex; align-items: baseline; gap: 10px;
+  /* 用 center 而不是 baseline：单个基线对齐的flex行会被放在交叉轴的**起点**上（行高又由
+     右边那颗 26px 的关闭按钮撑着），标题文字于是贴在标题栏顶部、下面白留 7px（实测过）。
+     标题是小字副标题并存时，两行各自的盒子居中，基线差 1px 上下，看不出来。 */
+  display: flex; align-items: center; gap: 10px;
   padding: 8px 14px 9px;
   border-bottom: 1px solid var(--line);
   border-radius: 11px 11px 0 0;

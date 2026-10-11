@@ -96,6 +96,25 @@ const readFontSizePt = (locator) =>
   locator.evaluate((element) => (Number.parseFloat(getComputedStyle(element).fontSize) * 72) / 96)
 
 /**
+ * 弹窗标题在标题栏里的上下留白（文字盒到标题栏内容区上下边）。
+ * 标题栏用 `align-items: baseline` 时，单个基线对齐的行会被贴到交叉轴起点上
+ * （行高由右边那颗 26px 关闭按钮撑着），标题就浮在顶部、下面白留 7px（实测过）。
+ */
+const headPadding = (page, selector) =>
+  page.locator(selector).evaluate((dialog) => {
+    const head = dialog.querySelector('.dialog-head')
+    const title = head.querySelector('.dialog-title')
+    const range = document.createRange()
+    range.selectNodeContents(title)
+    const text = range.getBoundingClientRect()
+    const box = head.getBoundingClientRect()
+    const style = getComputedStyle(head)
+    const top = box.top + Number.parseFloat(style.paddingTop)
+    const bottom = box.bottom - Number.parseFloat(style.paddingBottom) - Number.parseFloat(style.borderBottomWidth)
+    return { above: Math.round(text.top - top), below: Math.round(bottom - text.bottom) }
+  })
+
+/**
  * 编辑器辅助：源码区是 CodeMirror 6，没有 textarea 的 value / selectionStart / scrollTop，
  * 一律通过 ?e2e=1 挂上的调试句柄读写，避免断言绑死在编辑器的内部 DOM 上。
  */
@@ -1005,6 +1024,12 @@ async function main() {
       borderDialogWidth >= 450 && borderDialogWidth <= 520,
       `${borderDialogWidth}px`,
     )
+    const borderHeadPadding = await headPadding(page, '.border-dialog')
+    check(
+      '边框窗口的标题在标题栏里垂直居中',
+      Math.abs(borderHeadPadding.above - borderHeadPadding.below) <= 1,
+      `上留白 ${borderHeadPadding.above}px / 下留白 ${borderHeadPadding.below}px`,
+    )
     await borderDialog.getByRole('button', { name: '完成' }).click()
 
     // 属性：表格整体对齐 + 跨页重复标题行开关。
@@ -1382,6 +1407,14 @@ async function main() {
       `倾斜 ${glyphHover.italic} / 下划线 ${glyphHover.underline}`,
     )
 
+    // 标题文字要在标题栏里垂直居中（见 headPadding 的说明）
+    const styleHeadPadding = await headPadding(page, '.style-dialog')
+    check(
+      '样式窗口的标题在标题栏里垂直居中',
+      Math.abs(styleHeadPadding.above - styleHeadPadding.below) <= 1,
+      `上留白 ${styleHeadPadding.above}px / 下留白 ${styleHeadPadding.below}px`,
+    )
+
     // 5b. 弹窗：没有遮罩底色，但会挡住底层；可拖动、可缩放
     const layerState = await page.locator('.dialog-layer').evaluate((element) => ({
       background: getComputedStyle(element).backgroundColor,
@@ -1640,6 +1673,12 @@ async function main() {
       '页眉页脚窗口的默认宽度就是它的下限（460–540 宽、不超过 360 高）',
       furnitureBox.width >= 460 && furnitureBox.width <= 540 && furnitureBox.height <= 360,
       `${Math.round(furnitureBox.width)}×${Math.round(furnitureBox.height)}`,
+    )
+    const furnitureHeadPadding = await headPadding(page, '.furniture-dialog')
+    check(
+      '页眉页脚窗口的标题在标题栏里垂直居中',
+      Math.abs(furnitureHeadPadding.above - furnitureHeadPadding.below) <= 1,
+      `上留白 ${furnitureHeadPadding.above}px / 下留白 ${furnitureHeadPadding.below}px`,
     )
     const slotBefore = await furnitureDialog.getByLabel('页眉中部').inputValue()
     const hasThreeSlots =
