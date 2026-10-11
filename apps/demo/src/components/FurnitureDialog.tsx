@@ -107,7 +107,6 @@ export function FurnitureDialog({ area, page, onChange, onOpenStyle, onCancel, o
       >
         <header className="dialog-head" onPointerDown={beginDrag} title="按住拖动窗口">
           <h2 className="dialog-title">{title}</h2>
-          <span className="dialog-sub">分左、中、右三段，可用下面的域按钮插入页码、标题等</span>
           <button type="button" className="dialog-close" aria-label={`关闭${title}窗口`} onClick={onClose}>
             ✕
           </button>

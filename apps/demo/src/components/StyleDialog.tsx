@@ -662,6 +662,13 @@ export function StyleDialog(props: StyleDialogProps) {
     advanced: (
       <>
         <Section title="基于样式" note="跨类别继承只允许以「正文段落」为基础">
+          {/* 继承链原来以小字挂在标题栏右侧：它只是"这个角色最终从哪些角色叠出来"的说明，
+              不是改样式时要盯的信息，占着标题栏位置不值当。挪进进阶这一页，改「基于」时顺手能看见。 */}
+          <Row>
+            <span className="section-text">
+              当前继承链：{resolved.inheritanceChain.map((item) => roleLabel(item)).join(' → ')}
+            </span>
+          </Row>
           <Row>
             <Field label="基础样式" inline>
               <select
@@ -708,10 +715,6 @@ export function StyleDialog(props: StyleDialogProps) {
       >
         <header className="dialog-head" onPointerDown={beginDrag} title="按住拖动窗口">
           <h2 className="dialog-title">{roleLabel(role)}</h2>
-          <code className="role-id">{role}</code>
-          <span className="inherit-chain">
-            继承链：{resolved.inheritanceChain.map((item) => roleLabel(item)).join(' → ')}
-          </span>
           <button type="button" className="dialog-close" aria-label="关闭样式窗口" onClick={props.onClose}>
             ✕
           </button>

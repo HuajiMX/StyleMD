@@ -232,7 +232,6 @@ export function EditorSchemeDialog({ library, onChange, onClose }: EditorSchemeD
       >
         <header className="dialog-head" onPointerDown={beginDrag} title="按住拖动窗口">
           <h2 className="dialog-title">编辑器配色</h2>
-          <span className="dialog-sub">只影响源码编辑区，不影响预览与导出</span>
           <button type="button" className="dialog-close" aria-label="关闭" onClick={onClose}>
             ✕
           </button>

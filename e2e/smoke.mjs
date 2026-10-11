@@ -1415,6 +1415,14 @@ async function main() {
       `上留白 ${styleHeadPadding.above}px / 下留白 ${styleHeadPadding.below}px`,
     )
 
+    // 继承链原来以小字挂在标题栏右侧，挪进「进阶」页：标题栏只留角色名与 id
+    const styleHeadText = (await page.locator('.style-dialog .dialog-head').innerText()).replace(/\s+/g, ' ').trim()
+    check('样式窗口的标题栏不再放继承链小字', !styleHeadText.includes('继承链'), `标题栏：${styleHeadText}`)
+    await page.locator('.style-dialog').getByRole('tab', { name: '进阶' }).click()
+    const advancedText = await page.locator('.style-dialog .section-text').first().innerText()
+    check('继承链改到「进阶」页显示', advancedText.includes('当前继承链'), advancedText.trim())
+    await page.locator('.style-dialog').getByRole('tab', { name: '字体' }).click()
+
     // 5b. 弹窗：没有遮罩底色，但会挡住底层；可拖动、可缩放
     const layerState = await page.locator('.dialog-layer').evaluate((element) => ({
       background: getComputedStyle(element).backgroundColor,
@@ -1698,7 +1706,8 @@ async function main() {
     await furnitureDialog.getByRole('button', { name: '样式' }).click()
     const styleWindow = page.getByRole('dialog', { name: '页眉 样式配置' })
     await styleWindow.waitFor({ timeout: 5000 })
-    const styleRole = await styleWindow.locator('.role-id').innerText()
+    // 标题栏只留角色名（角色 id「page.header」那行小字删了），认窗口靠标题与 aria-label
+    const styleRole = (await styleWindow.locator('.dialog-title').innerText()).trim()
     const dialogStillOpen = await page.locator('.furniture-dialog').count()
     await styleWindow.getByRole('tab', { name: '边框与底纹', exact: true }).click()
     const borderSectionVisible = await styleWindow.locator('.form-section', { hasText: '边框' }).first().isVisible()
@@ -1706,7 +1715,7 @@ async function main() {
     await page.waitForSelector('[aria-label="页眉 样式配置"]', { state: 'detached', timeout: 5000 })
     check(
       '弹窗里的「样式」打开页眉样式窗口',
-      styleRole === 'page.header' && dialogStillOpen === 1 && borderSectionVisible,
+      styleRole === '页眉' && dialogStillOpen === 1 && borderSectionVisible,
       `${styleRole} / 弹窗仍在 ${dialogStillOpen} 个 / 边框页 ${borderSectionVisible}`,
     )
 
@@ -2139,6 +2148,13 @@ async function main() {
 
     // 配色窗口与样式窗口共用同一套拖动 / 缩放：拖标题栏要走，拖右下角要变大
     const schemeBefore = await page.locator('.scheme-dialog').boundingBox()
+    // 标题栏只留「编辑器配色」：那行「只影响源码编辑区…」的小字删掉了
+    const schemeHeadText = (await page.locator('.scheme-dialog .dialog-head').innerText()).replace(/\s+/g, ' ').trim()
+    check(
+      '配色窗口的标题栏不再挂说明小字',
+      schemeHeadText.startsWith('编辑器配色') && !schemeHeadText.includes('只影响'),
+      `标题栏：${schemeHeadText}`,
+    )
     // 两栏（预览 + 色槽）：原来默认铺到 980，预览那栏比内容宽不少，收到 900
     check(
       '配色窗口的默认宽度不再铺满（不超过 920）',
