@@ -18,15 +18,13 @@ import { computedToInlineStyle } from '../lib/inlineStyle'
 import { explicitStyle, resolvedStyle } from '../lib/roleStyle'
 import { clamp, useDialogFrame } from '../lib/dialogFrame'
 import {
-  canRequestSystemFonts,
   fontLabel,
   fontOptions,
-  loadFontCatalog,
   resolveFontInput,
   useFontCatalog,
 } from '../lib/fontCatalog'
 import { FOLLOW_CJK_LABEL, currentSlots } from '../lib/fontChain'
-import { FONT_FAMILIES, FONT_WEIGHTS } from '../lib/typePresets'
+import { FONT_WEIGHTS } from '../lib/typePresets'
 import { AlignSegmented } from './align-control'
 import { Combo, Field, FontSizeCombo, IconToggle, NumberInput, Row, Section, SelectInput, ToggleChip } from './fields'
 import { isMathSample, MathSample } from './MathSample'
@@ -73,7 +71,14 @@ function dialogTabsFor(role: string): typeof DIALOG_TABS {
   })
 }
 
-const MIN_WIDTH = 620
+/**
+ * 宽度按表单内容来，默认宽度就取这个下限——跟「边框和底纹」「页眉页脚」两个窗口同一套改法
+ * （`measure` 里直接写 `width: MIN_WIDTH`，不再两处各填一个数）。
+ *
+ * 这一页表单最宽的一行是「字号 + 字重 + 字距 + 字形」和字体槽：380px 时它们按「标签: 控件」
+ * 逐行换行，一行两格，排面仍然整齐；原来固定 1000 只是白白留白（表单最多用到 880）。
+ */
+const MIN_WIDTH = 380
 /** 预览区和页脚是固定高度的，窗口再小也要给表单留出空间。 */
 const MIN_HEIGHT = 380
 /** 首次打开时的最小高度，比手动缩放的下限宽裕一点，免得一进来就要往下滚。 */
@@ -116,8 +121,8 @@ export function StyleDialog(props: StyleDialogProps) {
   } = useDialogFrame({
     key: 'style-dialog',
     measure: () => ({
-      width: clamp(window.innerWidth - 200, MIN_WIDTH, 1000),
-      height: clamp(window.innerHeight - 180, MIN_HEIGHT, 720),
+      width: MIN_WIDTH,
+      height: clamp(window.innerHeight - 180, MIN_HEIGHT, 680),
     }),
     minWidth: MIN_WIDTH,
     minHeight: MIN_HEIGHT,
@@ -272,31 +277,6 @@ export function StyleDialog(props: StyleDialogProps) {
               />
             </Field>
           </Row>
-          <Row>
-            <span className="field-label">常用</span>
-            {FONT_FAMILIES.slice(0, 8).map((family) => (
-              <button
-                key={family}
-                type="button"
-                className="family-hint"
-                onClick={() => patch({ font: { cjkFamily: family } })}
-              >
-                {fontLabel(family, catalog.aliases)}
-              </button>
-            ))}
-            {/* 浏览器里读本机字体要先授权，而权限框必须由用户手势触发：
-                没授权时给个入口，别让人以为「只有这几个字体」。桌面壳不需要这一步。 */}
-            {canRequestSystemFonts() && catalog.source !== 'browser' ? (
-              <button
-                type="button"
-                className="family-hint"
-                onClick={() => void loadFontCatalog(true)}
-                title="浏览器会先问一次「是否允许查看本机字体」"
-              >
-                加载本机字体
-              </button>
-            ) : null}
-          </Row>
           {/* 平时不该看见的东西：只有要精确控制中英混排时才动它，折叠起来不占版面 */}
           <details className="advanced-block">
             <summary>进阶：回退链</summary>
@@ -359,23 +339,26 @@ export function StyleDialog(props: StyleDialogProps) {
                 <span className="unit">pt</span>
               </span>
             </Field>
-          </Row>
-          <Row>
-            <span className="field-label">字形</span>
-            <IconToggle
-              label="倾斜"
-              glyph="I"
-              className="glyph-italic"
-              checked={explicit?.font?.italic ?? resolved.font.italic}
-              onChange={(checked) => patch({ font: { italic: checked } })}
-            />
-            <IconToggle
-              label="下划线"
-              glyph="U"
-              className="glyph-underline"
-              checked={explicit?.font?.underline ?? resolved.font.underline}
-              onChange={(checked) => patch({ font: { underline: checked } })}
-            />
+            {/* 字形跟字号、字重、字距是一组（Word 也是这么并排的），单独占一行会格格不入。
+                这一格只放倾斜 / 下划线：加粗就是左边的「字重」，不必再开一个按钮跟它抢。 */}
+            <Field label="字形" inline as="span">
+              <IconToggle
+                label="倾斜"
+                glyph="I"
+                className="glyph-italic"
+                title="倾斜"
+                checked={explicit?.font?.italic ?? resolved.font.italic}
+                onChange={(checked) => patch({ font: { italic: checked } })}
+              />
+              <IconToggle
+                label="下划线"
+                glyph="U"
+                className="glyph-underline"
+                title="下划线"
+                checked={explicit?.font?.underline ?? resolved.font.underline}
+                onChange={(checked) => patch({ font: { underline: checked } })}
+              />
+            </Field>
           </Row>
         </Section>
 
@@ -770,7 +753,6 @@ export function StyleDialog(props: StyleDialogProps) {
 
         <footer className="dialog-foot">
           <span className="dialog-note">改动即时生效，可用工具栏的「撤销样式修改」回退</span>
-          <code className="dialog-doc">{props.documentTitle}</code>
           <button type="button" className="primary" onClick={props.onClose}>
             完成
           </button>

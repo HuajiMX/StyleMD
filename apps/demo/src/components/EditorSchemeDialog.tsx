@@ -58,7 +58,11 @@ const SAMPLE = [
 const SAMPLE_ACTIVE_TEXT = '正文里有 **加粗**、*斜体* 与 `行内代码`，还有 [链接](https://example.com)。'
 
 /** 左边是预览、右边是 14 行色槽，窗口再小也要装得下这两栏。 */
-const MIN_WIDTH = 720
+/**
+ * 两栏（实时预览 + 色槽列表）：色槽每行是「名字 + 色块 + 十六进制 + 对比度」，一栏约 400。
+ * 原来最小 720、默认铺到 980，预览那栏被拉得比内容宽不少，这里收到 660 / 900。
+ */
+const MIN_WIDTH = 660
 const MIN_HEIGHT = 420
 
 /**
@@ -90,7 +94,7 @@ export function EditorSchemeDialog({ library, onChange, onClose }: EditorSchemeD
   const { beginDrag, beginResize, frameStyle } = useDialogFrame({
     key: 'editor-scheme-dialog',
     measure: () => ({
-      width: clamp(window.innerWidth - 320, MIN_WIDTH, 980),
+      width: clamp(window.innerWidth - 320, MIN_WIDTH, 900),
       height: clamp(window.innerHeight - 200, MIN_HEIGHT, 700),
     }),
     minWidth: MIN_WIDTH,

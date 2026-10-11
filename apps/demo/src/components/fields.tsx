@@ -13,10 +13,18 @@ interface FieldProps {
   inline?: boolean
   /** 行内排布里需要更宽控件时用（例如字体族的回退链）。 */
   wide?: boolean
+  /**
+   * 外圈用什么元素。默认 `label`：里面是输入框 / 下拉框时，点标签能把焦点送进去。
+   * 里面放的是一排**按钮**（例如「字形」的倾斜 / 下划线开关）时必须传 `span`：
+   * 包成 label 的话浏览器会把这排里的**第一个**按钮当成"标签对应的控件"，
+   * 鼠标停在这一排的任意位置（比如移到「下划线」上）都会给那个按钮加上 `:hover` 底色，
+   * 看着像两个开关一起亮了（实测过）。
+   */
+  as?: 'label' | 'span'
   children: ReactNode
 }
 
-export function Field({ label, hint, inherited, compact, inline, wide, children }: FieldProps) {
+export function Field({ label, hint, inherited, compact, inline, wide, as = 'label', children }: FieldProps) {
   const className = [
     'field',
     label ? '' : 'bare',
@@ -28,11 +36,13 @@ export function Field({ label, hint, inherited, compact, inline, wide, children 
     .filter(Boolean)
     .join(' ')
 
+  const Tag = as
+
   return (
-    <label className={className} title={hint}>
+    <Tag className={className} title={hint}>
       {label ? <span className="field-label">{label}</span> : null}
       <span className="field-control">{children}</span>
-    </label>
+    </Tag>
   )
 }
 

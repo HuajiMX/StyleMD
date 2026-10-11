@@ -1,6 +1,6 @@
-import { useState } from 'react'
+import { useLayoutEffect, useRef, useState } from 'react'
 import type { ComputedStyles, RoleStyle, StyleTheme } from '@stylemd/theme-schema'
-import { useDialogFrame } from '../lib/dialogFrame'
+import { clamp, useDialogFrame } from '../lib/dialogFrame'
 import {
   BORDER_PRESETS,
   BORDER_STYLE_OPTIONS,
@@ -23,8 +23,14 @@ import {
   IconBorderThreeLine,
 } from './icons'
 
-const MIN_WIDTH = 620
-const MIN_HEIGHT = 430
+/**
+ * 窗口宽度贴着内容定：这页最宽的两块是「预览」那条（四条外框方向键 + 预览图 + 三条内部线，
+ * 固定 410px 不会换行）和「设置」四个预设按钮（408px），加窗口内边距与描边约 446。
+ * 原来固定 700，表单只用到 410，右边空掉四成。
+ * 默认宽度就取这个下限（跟样式窗口一样）：这页没有需要伸展的内容，开窗即最紧。
+ */
+const MIN_WIDTH = 470
+const MIN_HEIGHT = 360
 
 const PRESET_ICONS = {
   none: <IconBorderNone />,
@@ -74,12 +80,30 @@ interface TableBorderDialogProps {
  * 以及 `table` 角色的 `grid`（见 lib/tableBorders.ts 与 core 的格线块）。
  */
 export function TableBorderDialog({ theme, computed, onRoleChange, onClose }: TableBorderDialogProps) {
-  const { frameStyle, beginDrag, beginResize } = useDialogFrame({
+  const dialogRef = useRef<HTMLElement>(null)
+  const bodyRef = useRef<HTMLDivElement>(null)
+  const { frameStyle, setFrame, adjusted, restored, beginDrag, beginResize } = useDialogFrame({
     key: 'table-border-dialog',
-    measure: () => ({ width: 700, height: 540 }),
+    measure: () => ({ width: MIN_WIDTH, height: 470 }),
     minWidth: MIN_WIDTH,
     minHeight: MIN_HEIGHT,
   })
+  /**
+   * 高度贴着内容走（与样式窗口同一套）：开窗时与切换「设置」预设后量一次，用户手动拖过就不再插手。
+   * 这页删掉解释小字后内容矮了一截，固定 540 会在「底纹与内边距」和页脚之间留一大块空白。
+   */
+  useLayoutEffect(() => {
+    if (adjusted.current || restored) return
+    const dialog = dialogRef.current
+    const body = bodyRef.current
+    if (!dialog || !body) return
+    const style = getComputedStyle(body)
+    let content = 0
+    for (const child of body.children) content += (child as HTMLElement).offsetHeight
+    const chrome =
+      dialog.offsetHeight - body.offsetHeight + Number.parseFloat(style.paddingTop) + Number.parseFloat(style.paddingBottom)
+    setFrame((current) => ({ ...current, height: clamp(content + chrome + 2, MIN_HEIGHT, window.innerHeight - 80) }))
+  }, [adjusted, restored, setFrame])
   const [line, setLine] = useState<BorderLine>(() => currentLine(computed))
   const patchLine = (patch: Partial<BorderLine>) => setLine({ ...line, ...patch })
 
@@ -95,6 +119,7 @@ export function TableBorderDialog({ theme, computed, onRoleChange, onClose }: Ta
   return (
     <div className="dialog-layer" onPointerDown={onClose}>
       <section
+        ref={dialogRef}
         className="style-dialog border-dialog"
         role="dialog"
         aria-modal="true"
@@ -109,7 +134,7 @@ export function TableBorderDialog({ theme, computed, onRoleChange, onClose }: Ta
           </button>
         </header>
 
-        <div className="dialog-body">
+        <div className="dialog-body" ref={bodyRef}>
           <div className="form">
             <Section title="设置">
               <div className="field-chips">

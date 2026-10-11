@@ -1,6 +1,6 @@
-import { useRef } from 'react'
+import { useLayoutEffect, useRef } from 'react'
 import type { PageFurniture, PageSetup } from '@stylemd/theme-schema'
-import { useDialogFrame } from '../lib/dialogFrame'
+import { clamp, useDialogFrame } from '../lib/dialogFrame'
 import { Field, NumberInput, Row, Section, ToggleChip } from './fields'
 
 export type FurnitureArea = 'header' | 'footer'
@@ -19,8 +19,14 @@ const FIELD_CHIPS = [
   { token: '{date}', label: '日期', hint: '导出当天日期' },
 ]
 
-const MIN_WIDTH = 560
-const MIN_HEIGHT = 320
+/**
+ * 宽度贴着内容：最宽的两行是「插入域」四个域按钮（532px）与「内容」左中右三段输入框，
+ * 加窗口内边距与描边约 570。原来固定 720，右边空掉四分之一；域按钮本来就会换行，
+ * 所以下限给到 480——窄下去只是域按钮排两行、内容高一点，不影响可读。
+ * 默认宽度就取这个下限（跟样式窗口一样）：三块表单都短，开窗即最紧。
+ */
+const MIN_WIDTH = 480
+const MIN_HEIGHT = 240
 
 interface FurnitureDialogProps {
   area: FurnitureArea
@@ -41,12 +47,27 @@ export function FurnitureDialog({ area, page, onChange, onOpenStyle, onCancel, o
   const title = area === 'header' ? '页眉' : '页脚'
   const distanceLabel = area === 'header' ? '距页面顶部' : '距页面底部'
   const furniture: PageFurniture = (area === 'header' ? page.header : page.footer) ?? {}
-  const { frameStyle, beginDrag, beginResize } = useDialogFrame({
+  const dialogRef = useRef<HTMLElement>(null)
+  const bodyRef = useRef<HTMLDivElement>(null)
+  const { frameStyle, setFrame, adjusted, restored, beginDrag, beginResize } = useDialogFrame({
     key: `furniture-${area}`,
-    measure: () => ({ width: 720, height: 360 }),
+    measure: () => ({ width: MIN_WIDTH, height: 300 }),
     minWidth: MIN_WIDTH,
     minHeight: MIN_HEIGHT,
   })
+  // 高度贴着内容走（与样式窗口同一套）：三块表单只有一百多像素高，固定 360 会空掉一大半。
+  useLayoutEffect(() => {
+    if (adjusted.current || restored) return
+    const dialog = dialogRef.current
+    const body = bodyRef.current
+    if (!dialog || !body) return
+    const style = getComputedStyle(body)
+    let content = 0
+    for (const child of body.children) content += (child as HTMLElement).offsetHeight
+    const chrome =
+      dialog.offsetHeight - body.offsetHeight + Number.parseFloat(style.paddingTop) + Number.parseFloat(style.paddingBottom)
+    setFrame((current) => ({ ...current, height: clamp(content + chrome + 2, MIN_HEIGHT, window.innerHeight - 80) }))
+  }, [adjusted, restored, setFrame])
   const inputRefs = useRef<Record<(typeof SLOTS)[number]['key'], HTMLInputElement | null>>({
     left: null,
     center: null,
@@ -76,6 +97,7 @@ export function FurnitureDialog({ area, page, onChange, onOpenStyle, onCancel, o
   return (
     <div className="dialog-layer" onPointerDown={onClose}>
       <section
+        ref={dialogRef}
         className="style-dialog furniture-dialog"
         role="dialog"
         aria-modal="true"
@@ -91,7 +113,7 @@ export function FurnitureDialog({ area, page, onChange, onOpenStyle, onCancel, o
           </button>
         </header>
 
-        <div className="dialog-body">
+        <div className="dialog-body" ref={bodyRef}>
           <div className="form">
             <Section title="插入域" note="光标停在哪个输入框，就插到哪个位置">
               <div className="field-chips">

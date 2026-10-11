@@ -711,7 +711,6 @@ body.is-dragging-pane .preview-iframe { pointer-events: none; }
 .bp-head { background: var(--specimen); }
 
 /* ---------- 页眉页脚弹窗：左中右三段 + 快捷域 ---------- */
-.furniture-dialog { min-width: 560px; min-height: 320px; }
 .furniture-dialog .field-chips { display: flex; flex-wrap: wrap; gap: 6px; }
 .field-chip {
   display: inline-flex; align-items: baseline; gap: 6px;
@@ -728,8 +727,7 @@ body.is-dragging-pane .preview-iframe { pointer-events: none; }
 
 /* ---------- 编辑器配色面板 ---------- */
 .scheme-dialog {
-  /* 位置与大小由 useDialogFrame 给（跟样式窗口同一套）；这里只管两栏内容的下限。 */
-  min-width: 720px; min-height: 420px;
+  /* 位置与大小（含下限）都由 useDialogFrame 给，跟样式窗口同一套；这里不再压 CSS 下限。 */
 }
 .dialog-sub { font-size: 12px; color: var(--muted); }
 .scheme-presets {
@@ -787,7 +785,9 @@ body.is-dragging-pane .preview-iframe { pointer-events: none; }
 .style-dialog {
   position: fixed;
   display: flex; flex-direction: column;
-  min-width: 560px; min-height: 320px;
+  /* 尺寸下限不写在这儿：每个窗口的内容宽窄差得多（边框窗口 470 起、样式窗口 560 起），
+     下限由各自的 useDialogFrame(minWidth / minHeight) 给，CSS 再压一条只会互相打架
+     ——真踩过：边框窗口设 500，被这里那条 560 顶回去，右边白留一条。 */
   background: var(--panel); border-radius: 12px;
   border: 1px solid var(--line-strong);
   box-shadow: 0 24px 60px rgba(15, 23, 42, 0.32);

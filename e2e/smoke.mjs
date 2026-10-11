@@ -997,6 +997,14 @@ async function main() {
       grid.lastRowBottom === 0,
       `第一格右边框 ${grid.firstCellRight}px / 最后一格 ${grid.lastCellRight}px / 最后一行下边框 ${grid.lastRowBottom}px`,
     )
+    // 窗口宽度要贴着表单内容来（原来固定 700，表单只用到 410，右边空掉四成）；
+    // 默认宽度就是下限，开窗即最紧。
+    const borderDialogWidth = await page.locator('.border-dialog').evaluate((node) => Math.round(node.getBoundingClientRect().width))
+    check(
+      '边框窗口的默认宽度就是它的下限（450–520）',
+      borderDialogWidth >= 450 && borderDialogWidth <= 520,
+      `${borderDialogWidth}px`,
+    )
     await borderDialog.getByRole('button', { name: '完成' }).click()
 
     // 属性：表格整体对齐 + 跨页重复标题行开关。
@@ -1357,6 +1365,23 @@ async function main() {
       `弹窗 ${dialogControlHeight} / 工具栏 ${toolbarControlHeight}`,
     )
 
+    // 「字形」那两个开关的外圈是 span 而不是 label：包成 label 时浏览器会把这一排里的第一个按钮
+    // 当成"标签对应的控件"，鼠标停在下划线上也会给倾斜加上 :hover 底色，两个一起亮（真踩过）。
+    await page.locator('.style-dialog').getByRole('button', { name: '下划线' }).hover()
+    await page.waitForTimeout(150)
+    const glyphHover = await page.locator('.style-dialog').evaluate((node) => {
+      const background = (name) => {
+        const button = node.querySelector(`.icon-toggle[aria-label="${name}"]`)
+        return button ? getComputedStyle(button).backgroundColor : ''
+      }
+      return { italic: background('倾斜'), underline: background('下划线') }
+    })
+    check(
+      '「字形」的倾斜 / 下划线只亮悬停的那一个',
+      glyphHover.italic === 'rgba(0, 0, 0, 0)' && glyphHover.underline !== 'rgba(0, 0, 0, 0)',
+      `倾斜 ${glyphHover.italic} / 下划线 ${glyphHover.underline}`,
+    )
+
     // 5b. 弹窗：没有遮罩底色，但会挡住底层；可拖动、可缩放
     const layerState = await page.locator('.dialog-layer').evaluate((element) => ({
       background: getComputedStyle(element).backgroundColor,
@@ -1371,6 +1396,13 @@ async function main() {
     )
 
     const frameBefore = await page.locator('.style-dialog').boundingBox()
+    // 样式窗口按表单宽度来，默认宽度就是下限（跟边框 / 页眉页脚两个窗口同一套改法）：
+    // 原来固定 1000，最宽的一页也只用到 880 左右，右边空一条
+    check(
+      '样式窗口的默认宽度就是它的下限（340–420）',
+      frameBefore.width >= 340 && frameBefore.width <= 420,
+      `${Math.round(frameBefore.width)}×${Math.round(frameBefore.height)}`,
+    )
     const handle = await page.locator('.dialog-head').boundingBox()
     await page.mouse.move(handle.x + 200, handle.y + 18)
     await page.mouse.down()
@@ -1601,6 +1633,14 @@ async function main() {
     await page.getByRole('button', { name: '编辑页眉' }).click()
     const furnitureDialog = page.locator('.furniture-dialog')
     await furnitureDialog.waitFor({ timeout: 5000 })
+    // 窗口贴着表单内容：三块表单一百多像素高，固定 720×360 会空掉一大半（宽度与高度都收下来了）；
+    // 默认宽度就是下限，域按钮排两行也不影响读。
+    const furnitureBox = await furnitureDialog.boundingBox()
+    check(
+      '页眉页脚窗口的默认宽度就是它的下限（460–540 宽、不超过 360 高）',
+      furnitureBox.width >= 460 && furnitureBox.width <= 540 && furnitureBox.height <= 360,
+      `${Math.round(furnitureBox.width)}×${Math.round(furnitureBox.height)}`,
+    )
     const slotBefore = await furnitureDialog.getByLabel('页眉中部').inputValue()
     const hasThreeSlots =
       (await furnitureDialog.getByLabel('页眉左部').count()) === 1 &&
@@ -2060,6 +2100,12 @@ async function main() {
 
     // 配色窗口与样式窗口共用同一套拖动 / 缩放：拖标题栏要走，拖右下角要变大
     const schemeBefore = await page.locator('.scheme-dialog').boundingBox()
+    // 两栏（预览 + 色槽）：原来默认铺到 980，预览那栏比内容宽不少，收到 900
+    check(
+      '配色窗口的默认宽度不再铺满（不超过 920）',
+      schemeBefore.width <= 920 && schemeBefore.width >= 660,
+      `${Math.round(schemeBefore.width)}×${Math.round(schemeBefore.height)}`,
+    )
     const schemeHead = await page.locator('.scheme-dialog .dialog-head').boundingBox()
     await page.mouse.move(schemeHead.x + 60, schemeHead.y + schemeHead.height / 2)
     await page.mouse.down()
