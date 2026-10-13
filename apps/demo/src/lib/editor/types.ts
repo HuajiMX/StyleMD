@@ -23,6 +23,11 @@ export interface SourceEditorHandle {
   /** 滚动进度 0–1。 */
   getScrollRatio(): number
   setScrollRatio(ratio: number): void
+  /**
+   * 请 CodeMirror 重新量一次行高与换行。
+   * 字号是 CSS 变量（Ctrl+滚轮改），改完不重量的话，滚动定位与大纲跳转还按旧的行高算。
+   */
+  remeasure(): void
   destroy(): void
 }
 

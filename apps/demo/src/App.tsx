@@ -44,6 +44,14 @@ import { activeScheme, applyScheme, loadSchemeLibrary, saveSchemeLibrary } from 
 import { SCHEME_RIBBON_LIMIT, markSchemeUsed, orderSchemesByRecent, type EditorSchemeLibrary } from '@stylemd/editor-theme'
 import { clearRoleGroup, resetRoleStyle, updateDefaults, updatePage, updateTable, upsertRoleStyle } from './lib/themeOps'
 import { useDebounced } from './lib/useDebounced'
+import {
+  EDITOR_FONT_DEFAULT_PX,
+  EDITOR_FONT_STEP_PX,
+  ZOOM_STEP,
+  clampEditorFontPx,
+  clampZoom,
+  takeWheelZoomSteps,
+} from './lib/zoom'
 
 const MIN_NAV_WIDTH = 160
 const MAX_NAV_WIDTH = 420
@@ -97,6 +105,10 @@ export function App() {
   const [ribbonTab, setRibbonTab] = useState<RibbonTab>('start')
   const [cursorOffset, setCursorOffset] = useState(() => Math.max(0, session?.cursorOffset ?? 0))
   const [zoom, setZoom] = useState(() => session?.zoom ?? 0.85)
+  /** 编辑器字号（px）：编辑器上的 Ctrl+滚轮改，随会话存下来（只影响源码区，不动预览与导出）。 */
+  const [editorFontPx, setEditorFontPx] = useState(() =>
+    clampEditorFontPx(session?.editorFontPx ?? EDITOR_FONT_DEFAULT_PX),
+  )
   const [autoDetect, setAutoDetect] = useState(true)
   const [pagedStatus, setPagedStatus] = useState<'pending' | 'paged' | 'error'>('pending')
   const [readyId, setReadyId] = useState('')
@@ -134,6 +146,14 @@ export function App() {
   const [activeSlot, setActiveSlot] = useState<PreviewSlot>('a')
   const activeSlotRef = useRef<PreviewSlot>('a')
   const editorRef = useRef<SourceEditorHandle | null>(null)
+  /** 编辑器那块的宿主元素：判断 Ctrl+滚轮是不是落在编辑器上（预览是另一个文档，另走转发）。 */
+  const sourceHostRef = useRef<HTMLDivElement | null>(null)
+  /**
+   * Ctrl+滚轮的累积量，编辑器和预览各一个。滚轮事件比快捷键密得多（触控板捏合一次能来几十条），
+   * 攒够一档才动一次，余量留着下次接着攒。
+   */
+  const editorWheelRef = useRef(0)
+  const previewWheelRef = useRef(0)
   /** 从文件打开 / 另存为拿到的句柄：「保存」写回它，没有就当「另存为」处理。 */
   const fileHandleRef = useRef<FileHandle | null>(null)
   /**
@@ -469,12 +489,13 @@ export function App() {
         navWidth,
         editorWidth,
         zoom,
+        editorFontPx,
         savedAt: savedAtValue,
       })
       setSaved({ at: savedAtValue, kind: 'auto' })
     }, 400)
     return () => window.clearTimeout(timer)
-  }, [autoSave, markdown, cursorOffset, fileName, theme, viewMode, navOpen, navWidth, editorWidth, zoom])
+  }, [autoSave, markdown, cursorOffset, fileName, theme, viewMode, navOpen, navWidth, editorWidth, zoom, editorFontPx])
 
   const handleAutoSaveChange = useCallback((enabled: boolean) => {
     setAutoSave(enabled)
@@ -601,9 +622,52 @@ export function App() {
     pagedStatus === 'paged'
 
   /** 状态栏那两个加减按钮的步长；快捷键走同一条，缩放范围与它们一致。 */
-  const stepZoom = useCallback((direction: 1 | -1) => {
-    setZoom((current) => Math.min(2, Math.max(0.4, Number((current + direction * 0.1).toFixed(2)))))
+  const stepZoom = useCallback((steps: number) => {
+    setZoom((current) => clampZoom(current + steps * ZOOM_STEP))
   }, [])
+
+  /** Ctrl+滚轮落在编辑器上：改编辑器字号（步长 1px）。 */
+  const applyEditorFontWheel = useCallback((deltaY: number, deltaMode: number) => {
+    const steps = takeWheelZoomSteps(editorWheelRef, deltaY, deltaMode)
+    if (steps === 0) return
+    setEditorFontPx((current) => clampEditorFontPx(current + steps * EDITOR_FONT_STEP_PX))
+  }, [])
+
+  /** Ctrl+滚轮落在预览上：与 Ctrl+= / Ctrl+- 同一套步长（预览把它那边的 wheel 转过来）。 */
+  const applyPreviewZoomWheel = useCallback(
+    (deltaY: number, deltaMode: number) => {
+      stepZoom(takeWheelZoomSteps(previewWheelRef, deltaY, deltaMode))
+    },
+    [stepZoom],
+  )
+
+  /**
+   * 宿主文档里的 Ctrl+滚轮：指针在编辑器上就动编辑器字号，别处什么都不做。
+   *
+   * 别处仍然 `preventDefault`：浏览器会把 Ctrl+滚轮当整页缩放，而 Ctrl+= / Ctrl+- / Ctrl+0 已经被
+   * 接走做预览缩放了，留着这个口子只会让「Ctrl 系列只动内容」的预期漏气。
+   * 预览那一片收不到这个事件（指针在 iframe 里，事件在那个文档里派发），由预览自己转发
+   * `stylemd:zoom-wheel`。必须非被动监听——被动监听里 `preventDefault` 是空的。
+   */
+  useEffect(() => {
+    const onWheel = (event: WheelEvent) => {
+      if (!event.ctrlKey && !event.metaKey) return
+      event.preventDefault()
+      const target = event.target
+      if (target instanceof Node && sourceHostRef.current?.contains(target)) {
+        applyEditorFontWheel(event.deltaY, event.deltaMode)
+      }
+    }
+    window.addEventListener('wheel', onWheel, { passive: false })
+    return () => window.removeEventListener('wheel', onWheel)
+  }, [applyEditorFontWheel])
+
+  // 编辑器字号写成一个 CSS 变量（`.cm-scroller` 的主题引用它），所以改字号不用重建编辑器；
+  // 改完请 CodeMirror 重新量一次——行高还按旧值算的话，滚动同步与大纲跳转都会偏。
+  useEffect(() => {
+    document.documentElement.style.setProperty('--ed-font-size', `${editorFontPx}px`)
+    editorRef.current?.remeasure()
+  }, [editorFontPx])
 
   const runShortcut = useShortcuts({
     save: () => void handleSaveDocument(),
@@ -633,6 +697,18 @@ export function App() {
     window.addEventListener('message', receiveShortcut)
     return () => window.removeEventListener('message', receiveShortcut)
   }, [frameSlotOf, runShortcut])
+
+  /** 预览里的 Ctrl+滚轮：帧那边拦下默认行为后把滚轮量转过来，按与 Ctrl+= / Ctrl+- 相同的步长走。 */
+  useEffect(() => {
+    const receiveZoomWheel = (event: MessageEvent) => {
+      const data = event.data
+      if (data?.type !== 'stylemd:zoom-wheel' || !frameSlotOf(event.source)) return
+      if (typeof data.delta !== 'number') return
+      applyPreviewZoomWheel(data.delta, typeof data.mode === 'number' ? data.mode : 0)
+    }
+    window.addEventListener('message', receiveZoomWheel)
+    return () => window.removeEventListener('message', receiveZoomWheel)
+  }, [applyPreviewZoomWheel, frameSlotOf])
 
   const roleCount = Object.keys(result.stats.counts).length
 
@@ -718,6 +794,7 @@ export function App() {
           <SourcePane
             value={markdown}
             editorRef={editorRef}
+            hostRef={sourceHostRef}
             onChange={setMarkdown}
             onCursorChange={setCursorOffset}
             onScrollRatio={handleSourceScroll}

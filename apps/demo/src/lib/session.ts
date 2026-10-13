@@ -24,6 +24,8 @@ export interface SessionSnapshot {
   navWidth?: number
   editorWidth?: number
   zoom?: number
+  /** 编辑器字号（px）：编辑器上的 Ctrl+滚轮改，刷新后要还原。 */
+  editorFontPx?: number
   savedAt: number
 }
 
@@ -43,6 +45,7 @@ export function loadSession(): SessionSnapshot | null {
       navWidth: parsed.navWidth,
       editorWidth: parsed.editorWidth,
       zoom: parsed.zoom,
+      editorFontPx: parsed.editorFontPx,
       savedAt: typeof parsed.savedAt === 'number' ? parsed.savedAt : Date.now(),
     }
   } catch {

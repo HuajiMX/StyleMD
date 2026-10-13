@@ -32,6 +32,7 @@ Chromium 不会替我们处理 Ctrl+S / Ctrl+P（那是 Chrome 浏览器层的�
 | `Ctrl+=` / `Ctrl+Shift+=` | 放大预览 | `stepZoom(+1)` |
 | `Ctrl+-` | 缩小预览 | `stepZoom(-1)` |
 | `Ctrl+0` | 预览缩放回到 100% | `setZoom(1)` |
+| `Ctrl+滚轮` | 指针在编辑器上改**编辑器字号**，在预览上等于 `Ctrl+=` / `Ctrl+-` | 宿主 `wheel` 监听 + 预览转发 `stylemd:zoom-wheel` |
 
 主修饰键 Ctrl 与 Cmd 都认（macOS 上两种习惯都常见），显示文案按平台给 `Ctrl+S` / `⌘S`。
 带 Alt 的一律不认——有些键盘的 AltGr 会报成 Ctrl+Alt，抢下来会吃掉输入法组合键。
@@ -73,14 +74,34 @@ Playwright 走 CDP 把按键直接送进渲染进程，验的是「按键到了�
 
 | 命令 | 结果 |
 |:---|:---|
-| `npm.cmd test` | 20 个文件 / 187 个用例通过（新增 `apps/demo/test/shortcuts.test.ts` 8 项：匹配、Shift 区分、Alt 与无修饰键放过、显示文案、注入预览的键位表；`renderer-paged` 的 `lifecycle.test.ts` 2 项守按键转发；纸张尺寸 3 项） |
+| `npm.cmd test` | 21 个文件 / 194 个用例通过（新增 `apps/demo/test/shortcuts.test.ts` 8 项：匹配、Shift 区分、Alt 与无修饰键放过、显示文案、注入预览的键位表；`apps/demo/test/zoom.test.ts` 7 项：范围与步长、滚轮累积与余量；`renderer-paged` 的 `lifecycle.test.ts` 2 项守按键转发；纸张尺寸 3 项） |
 | `npm.cmd run typecheck` | 通过 |
 | `npm.cmd run build` | 通过 |
-| `node e2e/smoke.mjs` | **160/160** 通过，新增 8 项：菜单右侧的快捷键提示与 `aria-keyshortcuts`、Ctrl+S 写回文件、Ctrl+Shift+S 弹选择框、Ctrl+= 放大、Ctrl+0 回到 100%、Ctrl+N 新建、Ctrl+O 打开并换标题栏文件名、焦点在预览 iframe 里时的 Ctrl+= 与 Ctrl+S |
+| `node e2e/smoke.mjs` | **165/165** 通过，新增 13 项：菜单右侧的快捷键提示与 `aria-keyshortcuts`、Ctrl+S 写回文件、Ctrl+Shift+S 弹选择框、Ctrl+= 放大、Ctrl+0 回到 100%、Ctrl+N 新建、Ctrl+O 打开并换标题栏文件名、焦点在预览 iframe 里时的 Ctrl+= 与 Ctrl+S、编辑器上 Ctrl+滚轮放大字号、行号字号跟着动、不带 Ctrl 的滚轮只滚动、字号写进会话、预览上 Ctrl+滚轮与 Ctrl+= 同步长 |
 | `npm.cmd run desktop:smoke` | **19/19** 通过，新增：Ctrl+S 在桌面壳里走完保存（`shortcutSave: written:1439`）、放行 `fileSystem` 权限（见下） |
 
 桌面壳那条断言把 `window.showSaveFilePicker` 换成假句柄再按键：真弹系统保存框的话自检会卡在对话框上。
 换不掉就不按键，报 `cannot-stub` 而不是把自检挂死。
+
+## Ctrl+滚轮（2026-10-13 补）
+
+指针在**编辑器**上 → 改编辑器字号（9–24px，一档 1px）；在**预览**上 → 与 `Ctrl+=` / `Ctrl+-` 同一步长（一档 0.1）。
+两处的范围与步长都收在 `lib/zoom.ts`，状态栏那两个按钮也改用它，免得下限各写一份、从按钮滑到底再按快捷键会跳一下。
+
+三个要点：
+
+1. **编辑器字号是 CSS 变量**（`--ed-font-size`，`.cm-scroller` 的主题引用它），所以改字号不用重建编辑器；
+   改完要 `editorRef.current.remeasure()` —— 不请 CodeMirror 重量一次，滚动同步与大纲跳转还按旧行高算。
+   字号随会话存（`editorFontPx`）。
+2. **按累积量过 100px 才算一档**：鼠标滚一格正好 100px = 一档（与 `Ctrl+=` 同步长），
+   触控板捏合一次会来几十条小事件，攒够才动一次、余量留着下次接着攒；编辑器与预览各一个累积器。
+   宿主里除编辑器外一律 `preventDefault`（浏览器会拿 Ctrl+滚轮缩放整个界面）。
+3. **预览那一片又要转发**：指针停在 iframe 里时宿主收不到 `wheel`（还是「另一个文档」那条），
+   帧里拦下默认行为（**必须非被动监听**，被动监听里 `preventDefault` 是空的）再把滚轮量
+   postMessage `stylemd:zoom-wheel` 给宿主，宿主按与快捷键相同的步长走。
+
+顺带修掉一个真踩到的：**行号字号原来写死 `11.5px`**，Ctrl+滚轮只把正文放大、行号不动，
+两边行高对不上就会错行；改成 `0.92em`（= 12.5px 下的 11.5px）跟着走，e2e 里有一条守着。
 
 ## 踩到的坑：桌面壳里「保存」写不进去
 

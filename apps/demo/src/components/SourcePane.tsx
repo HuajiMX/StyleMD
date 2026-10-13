@@ -6,6 +6,8 @@ import type { SourceEditorHandle } from '../lib/editor/types'
 interface SourcePaneProps {
   value: string
   editorRef: MutableRefObject<SourceEditorHandle | null>
+  /** 编辑区容器。上层要拿它做命中判断（Ctrl+滚轮落在编辑器上才算改字号），所以从外面传进来。 */
+  hostRef: MutableRefObject<HTMLDivElement | null>
   onChange: (value: string) => void
   onCursorChange: (offset: number) => void
   /** 滚动进度 0–1，用来让预览跟着走。 */
@@ -27,6 +29,7 @@ interface SourcePaneProps {
 export function SourcePane({
   value,
   editorRef,
+  hostRef,
   onChange,
   onCursorChange,
   onScrollRatio,
@@ -34,7 +37,6 @@ export function SourcePane({
   cursorOffset,
   style,
 }: SourcePaneProps) {
-  const hostRef = useRef<HTMLDivElement>(null)
   const editorInstanceRef = useRef<SourceEditor | null>(null)
   const handlersRef = useRef({ onChange, onCursorChange, onScrollRatio })
   handlersRef.current = { onChange, onCursorChange, onScrollRatio }

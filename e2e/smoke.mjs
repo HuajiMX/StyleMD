@@ -2124,6 +2124,75 @@ async function main() {
       `写入 ${previewKeysSave.writes.length} 次`,
     )
 
+    // 9c. Ctrl+滚轮：编辑器上改编辑器字号，预览上按 Ctrl+= / Ctrl+- 同一套步长。
+    //     预览那一片同样是「另一个文档」，帧里拦下默认行为再把滚轮量转给宿主。
+    const editorFontSize = async () =>
+      page.locator('.source-pane .cm-scroller').evaluate((node) => getComputedStyle(node).fontSize)
+    const fontBeforeWheel = await editorFontSize()
+    const editorBox = await page.locator('.source-pane .cm-content').boundingBox()
+    await page.mouse.move(editorBox.x + 40, editorBox.y + 20)
+    await page.keyboard.down('Control')
+    await page.mouse.wheel(0, -100)
+    await page.keyboard.up('Control')
+    const fontAfterWheel = await until(
+      async () => {
+        const value = await editorFontSize()
+        return value === fontBeforeWheel ? '' : value
+      },
+      { label: '编辑器上 Ctrl+滚轮改字号' },
+    )
+    check(
+      '编辑器上 Ctrl+滚轮向上滚放大字号',
+      Number.parseFloat(fontAfterWheel) > Number.parseFloat(fontBeforeWheel),
+      `${fontBeforeWheel} → ${fontAfterWheel}`,
+    )
+    // 行号挂在 .cm-scroller 里面，字号写死 px 的话正文放大了它还不动（两边行高对不上会错行）
+    const lineNumberSize = async () =>
+      page
+        .locator('.source-pane .cm-lineNumbers .cm-gutterElement')
+        .first()
+        .evaluate((node) => getComputedStyle(node).fontSize)
+    const lineNumberAfterWheel = await lineNumberSize()
+    check(
+      'Ctrl+滚轮时行号字号跟着动（写死 px 会错行）',
+      Number.parseFloat(lineNumberAfterWheel) > 11.5 &&
+        Number.parseFloat(lineNumberAfterWheel) < Number.parseFloat(fontAfterWheel),
+      `行号 ${lineNumberAfterWheel} / 正文 ${fontAfterWheel}`,
+    )
+    // 不带 Ctrl 的滚轮只滚动，不该动字号（回归守卫：别把普通滚动也吃了）
+    await page.mouse.wheel(0, -100)
+    await page.waitForTimeout(200)
+    const fontAfterPlainWheel = await editorFontSize()
+    check('不带 Ctrl 的滚轮只滚动、不改字号', fontAfterPlainWheel === fontAfterWheel, fontAfterPlainWheel)
+    const storedFont = await until(
+      async () => {
+        const raw = await page.evaluate(() => window.localStorage.getItem('stylemd:session:v1') ?? '')
+        const parsed = raw ? JSON.parse(raw) : null
+        return parsed?.editorFontPx === 13.5 ? parsed.editorFontPx : 0
+      },
+      { label: '编辑器字号写进会话存档' },
+    )
+    check('编辑器字号随会话存下来（刷新后还原）', storedFont === 13.5, `editorFontPx=${storedFont}`)
+
+    const previewWheelBox = await page.locator('.preview-iframe').boundingBox()
+    await page.mouse.move(previewWheelBox.x + previewWheelBox.width / 2, previewWheelBox.y + 40)
+    const zoomBeforeWheel = await zoomText()
+    await page.keyboard.down('Control')
+    await page.mouse.wheel(0, -100)
+    await page.keyboard.up('Control')
+    const zoomAfterWheel = await until(
+      async () => {
+        const value = await zoomText()
+        return value === zoomBeforeWheel ? '' : value
+      },
+      { label: '预览上 Ctrl+滚轮缩放' },
+    )
+    check(
+      '预览上 Ctrl+滚轮与 Ctrl+= 同步长（+10%）',
+      Number.parseInt(zoomAfterWheel, 10) - Number.parseInt(zoomBeforeWheel, 10) === 10,
+      `${zoomBeforeWheel} → ${zoomAfterWheel}`,
+    )
+
     await page.locator('.source-pane .cm-content').click()
     await page.keyboard.press('Control+KeyN')
     const blankByShortcut = await until(

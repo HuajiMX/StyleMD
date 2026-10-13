@@ -47,7 +47,8 @@ const surfaceTheme = EditorView.theme({
   },
   '.cm-scroller': {
     fontFamily: 'var(--mono)',
-    fontSize: '12.5px',
+    // 字号由 Ctrl+滚轮改（App 写 `--ed-font-size`）；这里给的主题值只是兜底默认。
+    fontSize: 'var(--ed-font-size, 12.5px)',
     lineHeight: '1.75',
     padding: '12px 14px',
   },
@@ -59,7 +60,9 @@ const surfaceTheme = EditorView.theme({
   '.cm-gutters': { backgroundColor: 'transparent', borderRight: '0', color: 'var(--syn-meta)' },
   '.cm-lineNumbers .cm-gutterElement': {
     padding: '0 8px 0 4px',
-    fontSize: '11.5px',
+    // 相对字号（0.92em = 12.5px 下的 11.5px）：行号挂在 .cm-scroller 里面，
+    // 写死 px 的话 Ctrl+滚轮只把正文放大、行号不动，两边的行高对不上还会错行。
+    fontSize: '0.92em',
     fontVariantNumeric: 'tabular-nums',
   },
   // 当前行的行号加深加粗即可；底色要与编辑器一致，否则深色配色下会露出一个白方块。
@@ -178,6 +181,7 @@ export function createSourceEditor(options: SourceEditorOptions): SourceEditor {
     setRoleHighlight(input) {
       view.dispatch({ effects: setRoleHighlight.of(input) })
     },
+    remeasure: () => view.requestMeasure(),
     destroy: () => view.destroy(),
   }
 }

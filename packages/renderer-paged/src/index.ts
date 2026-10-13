@@ -194,6 +194,16 @@ document.addEventListener('keydown', function(event) {
     return;
   }
 });
+// Ctrl+滚轮同理（还是「另一个文档」）：父文档收不到这个 wheel，指针停在预览里滚还得拦下
+// 浏览器拿它当整页缩放。**必须非被动监听**——被动监听里 preventDefault 是空的。
+// 累积交给宿主：触控板捏合一次会来几十条事件，宿主按累积量过阈值才算一档，
+// 与编辑器那侧共用同一份步进（apps/demo/src/lib/zoom.ts）。
+document.addEventListener('wheel', function(event) {
+  if (!event.ctrlKey && !event.metaKey) return;
+  if (window.parent === window) return;
+  event.preventDefault();
+  window.parent.postMessage({ type: 'stylemd:zoom-wheel', id: ${id}, delta: event.deltaY, mode: event.deltaMode }, '*');
+}, { passive: false });
 // 跨页表格：Paged.js 把一张表按页切成多个独立 <table>，每片只按自己那部分内容算列宽，跨页就对不齐。
 // 注意不能等分页完再统一列宽：那会把行重新排高、把内容挤出页面（实测连表格下框线都会跟着跑出页外）。
 // 必须在分页之前按页面内容宽度把列宽定死，让 Paged.js 从一开始就按最终几何分页。
