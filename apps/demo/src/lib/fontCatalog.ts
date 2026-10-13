@@ -15,8 +15,12 @@ export interface FontCatalog {
   /** 全部候选，常用的排前面 */
   families: string[]
   source: FontSource
-  /** 给界面看的来源说明，直接摆在字体分区上 */
-  note: string
+  /**
+   * 给界面看的来源说明，直接摆在字体分区上。
+   * 只有拿不到本机字体（常用清单兜底 / 没授权）时才给一句——能读到本机字体时列表自己
+   * 就写清了来源与数量，再复述一遍只是噪声。
+   */
+  note?: string
   /** 读到的本机字体数量；`curated` 来源为 0 */
   systemCount: number
   /** 英文家族名 → 本地化（中文）名；没有就显示家族名本身 */
@@ -172,13 +176,11 @@ async function runLoad(force: boolean): Promise<void> {
     })
     return
   }
-  const localizedCount = system.families.filter((family) => system.aliases[family]).length
+  // 能读到本机字体时不给 note：候选列表里常用的排在最前、其余按名字排，
+  // 读到了几个、几个有中文名都对用户下一步没有影响。
   publish({
     families: mergeFamilies(FONT_FAMILIES, system.families, (family) => fontLabel(family, system.aliases)),
     source: system.source,
-    note: `${system.source === 'desktop' ? '桌面壳' : '浏览器'}读到 ${system.families.length} 个本机字体${
-      localizedCount > 0 ? `（${localizedCount} 个有中文名）` : ''
-    }，常用的排在前面`,
     systemCount: system.families.length,
     aliases: system.aliases,
   })

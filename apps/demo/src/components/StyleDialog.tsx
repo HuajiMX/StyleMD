@@ -381,7 +381,7 @@ export function StyleDialog(props: StyleDialogProps) {
     ),
     paragraph: (
       <>
-        <Section title="常规" note="版式约定：不随「基于」继承">
+        <Section title="常规" note="不参与继承">
           <Row>
             <Field label="对齐方式" inline>
               <AlignSegmented
@@ -392,7 +392,7 @@ export function StyleDialog(props: StyleDialogProps) {
           </Row>
         </Section>
 
-        <Section title="缩进" note="按字符数计的随字号缩放；版式约定，不随「基于」继承">
+        <Section title="缩进" note="不参与继承">
           <Row>
             <Field label="左侧" inline>
               <span className="field-control">
@@ -515,7 +515,7 @@ export function StyleDialog(props: StyleDialogProps) {
           </Row>
         </Section>
 
-        <Section title="分页" note="分页器支持度有限，尽力而为">
+        <Section title="分页">
           <Row>
             <ToggleChip
               label="与下段同页"
@@ -535,7 +535,7 @@ export function StyleDialog(props: StyleDialogProps) {
     ),
     border: (
       <>
-        <Section title="边框" note="样式 / 线宽 pt / 颜色">
+        <Section title="边框">
           <Row>
             {SIDES.map((side) => {
               const current = explicit?.border?.[side.key]
@@ -566,6 +566,7 @@ export function StyleDialog(props: StyleDialogProps) {
                         })
                       }
                     />
+                    <span className="unit">pt</span>
                     <input
                       type="color"
                       value={effective?.color ?? '#000000'}
@@ -625,7 +626,7 @@ export function StyleDialog(props: StyleDialogProps) {
     ),
     numbering: (
       <>
-        <Section title="章节编号" note="对 1–6 级标题生效，{n} 代表序号">
+        <Section title="章节编号">
           <Row>
             <ToggleChip
               label="启用自动编号"
@@ -740,7 +741,7 @@ export function StyleDialog(props: StyleDialogProps) {
           <div className="form">
             {tabBody[activeTab]}
             {/* 预览放在主体表单后面，每个选项卡里都有；不固定在窗口底部。 */}
-            <Section title="预览" note="用当前计算样式渲染，不进分页器">
+            <Section title="预览">
               <div className="sample-box">
                 <div style={computedToInlineStyle(resolved)}>
                   {definition && isMathSample(definition) ? (

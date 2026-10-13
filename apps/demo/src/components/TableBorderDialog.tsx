@@ -278,7 +278,7 @@ export function TableBorderDialog({ theme, computed, onRoleChange, onClose }: Ta
         </div>
 
         <footer className="dialog-foot">
-          <span className="dialog-note">改动即时生效，随时可以在「开始 → 样式包」里导出这套样式</span>
+          <span className="dialog-note">改动即时生效</span>
           <span className="dialog-actions">
             <button type="button" className="primary" onClick={onClose}>
               完成

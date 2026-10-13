@@ -126,7 +126,6 @@ export function Ribbon(props: RibbonProps) {
       <div className="ribbon-titlebar">
         <div className="brand">
           <strong>StyleMD</strong>
-          <span className="brand-sub">样式管理器原型</span>
         </div>
         <FileHeading
           fileName={props.fileName}

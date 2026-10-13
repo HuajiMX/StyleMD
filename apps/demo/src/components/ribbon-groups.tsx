@@ -216,7 +216,15 @@ export function FontQuickGroup({ ctx }: { ctx: StyleEditContext }) {
           label=""
           compact
           inherited={inherited}
-          hint={`中文字体：${fontLabel(shownFamily, catalog.aliases) || '未指定'}\n西文字体：${slots.latinFamily ? fontLabel(slots.latinFamily, catalog.aliases) : FOLLOW_CJK_LABEL}\n候选来源：${catalog.note}\n下拉选一个字体，或直接输入字体名（只改中文字体，西文与其余回退保留）`}
+          hint={[
+            `中文字体：${fontLabel(shownFamily, catalog.aliases) || '未指定'}`,
+            `西文字体：${slots.latinFamily ? fontLabel(slots.latinFamily, catalog.aliases) : FOLLOW_CJK_LABEL}`,
+            // 拿不到本机字体时才有来源说明；读得到的时候这句是空话，整行省掉。
+            catalog.note ? `候选来源：${catalog.note}` : null,
+            '下拉选一个字体，或直接输入字体名（只改中文字体，西文与其余回退保留）',
+          ]
+            .filter((line): line is string => Boolean(line))
+            .join('\n')}
         >
           <Combo
             className="font-family-combo"

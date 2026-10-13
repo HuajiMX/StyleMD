@@ -86,7 +86,7 @@ export interface ParagraphSpec {
   indentRightPt?: number
   keepWithNext?: boolean
   pageBreakBefore?: boolean
-  /** 分页器支持度有限，UI 需标注"尽力而为"。 */
+  /** 孤行 / 寡行控制；分页器支持度有限，尽力而为。 */
   widows?: number
   orphans?: number
   /**
