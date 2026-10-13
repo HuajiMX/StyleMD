@@ -19,6 +19,7 @@ import {
   type StyleEditContext,
   type TableEditContext,
 } from './ribbon-groups'
+import { IconChevronDown, IconChevronUp } from './icons'
 
 export type RibbonTab = 'start' | 'edit' | 'page' | 'table'
 
@@ -36,6 +37,12 @@ interface RibbonProps {
   documentTitle: string
   tab: RibbonTab
   onTabChange: (tab: RibbonTab) => void
+  /**
+   * 工具带（分组那一排）是否收起：收起后只剩选项卡栏，跟 Word 的「折叠功能区」一个意思。
+   * 选项卡栏必须留着——收起来还得靠它旁边那枚按钮展开回来。
+   */
+  collapsed: boolean
+  onToggleCollapsed: () => void
   autoDetect: boolean
   status: { roles: number; warnings: number; errors: number }
   canPrint: boolean
@@ -122,7 +129,7 @@ export function Ribbon(props: RibbonProps) {
   const printLabel = canExportPdfDirectly() ? '导出 PDF' : '打印 / 导出 PDF'
 
   return (
-    <header className="ribbon">
+    <header className={`ribbon${props.collapsed ? ' is-collapsed' : ''}`}>
       <div className="ribbon-titlebar">
         <div className="brand">
           <strong>StyleMD</strong>
@@ -189,9 +196,22 @@ export function Ribbon(props: RibbonProps) {
             </button>
           </>
         ) : null}
+        {/* 收起 / 展开工具带：贴选项卡栏最右侧（`margin-left: auto`）。收起来只剩这一行，
+            所以按钮必须留在这儿——不然收下去就点不回来了。 */}
+        <button
+          type="button"
+          className="ribbon-collapse"
+          aria-expanded={!props.collapsed}
+          aria-controls="ribbon-body"
+          aria-label={props.collapsed ? '展开功能区' : '收起功能区'}
+          title={props.collapsed ? '展开功能区' : '收起功能区'}
+          onClick={props.onToggleCollapsed}
+        >
+          {props.collapsed ? <IconChevronDown /> : <IconChevronUp />}
+        </button>
       </nav>
 
-      <div className="ribbon-body">
+      <div className="ribbon-body" id="ribbon-body">
         {activeTab === 'start' ? (
           <>
             <StylePackGroup

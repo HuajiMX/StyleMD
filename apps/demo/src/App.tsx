@@ -125,6 +125,8 @@ export function App() {
       : 'both',
   )
   const [navOpen, setNavOpen] = useState(() => session?.navOpen ?? true)
+  /** 收起功能区：只藏工具带，选项卡栏留着（不然收起来就没地方展开了）。跟着会话存。 */
+  const [ribbonCollapsed, setRibbonCollapsed] = useState(() => session?.ribbonCollapsed ?? false)
   const [navWidth, setNavWidth] = useState(() => session?.navWidth ?? 220)
   const [editorWidth, setEditorWidth] = useState(() => session?.editorWidth ?? 420)
   /** 最后一次保存：时间 + 是自动写会话还是手动存文件，状态栏据此显示不同措辞。 */
@@ -521,6 +523,7 @@ export function App() {
         theme,
         viewMode,
         navOpen,
+        ribbonCollapsed,
         navWidth,
         editorWidth,
         zoom,
@@ -530,7 +533,20 @@ export function App() {
       setSaved({ at: savedAtValue, kind: 'auto' })
     }, 400)
     return () => window.clearTimeout(timer)
-  }, [autoSave, markdown, cursorOffset, fileName, theme, viewMode, navOpen, navWidth, editorWidth, zoom, editorFontPx])
+  }, [
+    autoSave,
+    markdown,
+    cursorOffset,
+    fileName,
+    theme,
+    viewMode,
+    navOpen,
+    ribbonCollapsed,
+    navWidth,
+    editorWidth,
+    zoom,
+    editorFontPx,
+  ])
 
   const handleAutoSaveChange = useCallback((enabled: boolean) => {
     setAutoSave(enabled)
@@ -756,7 +772,13 @@ export function App() {
         cursorRole={cursorRole}
         documentTitle={documentName}
         tab={ribbonTab}
-        onTabChange={setRibbonTab}
+        onTabChange={(tab) => {
+          setRibbonTab(tab)
+          // 收起状态点选项卡要把工具带放出来（仿 Word，点当前那一栏也放）：收起只是不用的时候
+          // 让位给正文，既然在挑栏目了，就是要用这一栏的控件。光标进表格那类程序化切换不走这里，
+          // 那种情况下工具带不该自己弹出来。
+          setRibbonCollapsed(false)
+        }}
         autoDetect={autoDetect}
         status={{ roles: roleCount, warnings: result.warnings.length + validation.warnings.length, errors: validation.errors.length }}
         canPrint={canPrint}
@@ -795,6 +817,8 @@ export function App() {
         tableContext={inTable}
         onTableChange={handleTableChange}
         onOpenBorderDialog={() => setBorderDialogOpen(true)}
+        collapsed={ribbonCollapsed}
+        onToggleCollapsed={() => setRibbonCollapsed((collapsed) => !collapsed)}
         schemes={ribbonSchemes}
         activeSchemeId={currentScheme.id}
         hiddenSchemeCount={Math.max(0, schemeLibrary.schemes.length - ribbonSchemes.length)}

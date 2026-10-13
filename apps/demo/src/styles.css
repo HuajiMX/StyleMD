@@ -207,6 +207,20 @@ input[type='radio']:focus-visible {
 /* 上下文选项卡（表格）：只在光标进表格时出现，跟常规选项卡之间留一条竖线切一下。
    它是"跟着光标出现"的，所以底色比常规选项卡淡一档，选中时也一样染强调色。 */
 .ribbon-tab-sep { flex: 0 0 auto; align-self: center; width: 1px; height: 16px; margin: 0 4px; background: var(--line-strong); }
+/* 选项卡栏最右侧的收起 / 展开按钮（仿 Word 的「折叠功能区」）：`margin-left: auto` 顶到右边，
+   通用规则 `.ribbon button`（0,2,1）带内边距和圆角，这里带 .ribbon 前缀才压得住。 */
+.ribbon .ribbon-collapse {
+  margin-left: auto; align-self: center;
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 22px; height: 22px; padding: 0;
+  border: 0; border-radius: 4px; background: transparent; color: var(--muted);
+}
+.ribbon .ribbon-collapse:hover { background: #eceff4; color: var(--ink-2); }
+/* 收起：工具带整块不画（`display: none` 而不是卸载组件——收起再展开时，边框那支"手里这条线"、
+   布局面板选的是表头还是内容这些临时状态不用重来）。选项卡栏那条下边线这时会和 .ribbon 的
+   外框叠成两条，去掉它。 */
+.ribbon.is-collapsed .ribbon-tabs { border-bottom: 0; }
+.ribbon.is-collapsed .ribbon-body { display: none; }
 .ribbon .ribbon-tab.context-tab { color: var(--accent); }
 .ribbon .ribbon-tab.context-tab:not(.active) { background: var(--accent-soft); }
 

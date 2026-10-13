@@ -21,6 +21,8 @@ export interface SessionSnapshot {
   theme?: unknown
   viewMode?: string
   navOpen?: boolean
+  /** 工具带是否收起（只剩选项卡栏）。 */
+  ribbonCollapsed?: boolean
   navWidth?: number
   editorWidth?: number
   zoom?: number
@@ -42,6 +44,7 @@ export function loadSession(): SessionSnapshot | null {
       theme: parsed.theme,
       viewMode: parsed.viewMode,
       navOpen: parsed.navOpen,
+      ribbonCollapsed: parsed.ribbonCollapsed,
       navWidth: parsed.navWidth,
       editorWidth: parsed.editorWidth,
       zoom: parsed.zoom,

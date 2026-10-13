@@ -233,6 +233,15 @@ export function IconChevronDown() {
   )
 }
 
+/** 收起工具带：同一个尖角反过来，跟下拉箭头同一套造型。 */
+export function IconChevronUp() {
+  return (
+    <svg {...BASE} width={10} height={10} strokeWidth={1.8}>
+      <path d="M4 9.6 8 5.8l4 3.8" />
+    </svg>
+  )
+}
+
 /** 表格宽度按内容自适应：窄表居中，两侧留白。 */
 export function IconTableFitContent() {
   return (
