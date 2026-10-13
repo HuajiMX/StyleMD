@@ -226,6 +226,13 @@ function createWindow(): BrowserWindow {
       nodeIntegration: false,
       sandbox: true,
       spellcheck: false,
+      /**
+       * 主窗口也要关掉后台节流：预览分页整条链靠 requestAnimationFrame 一页一页推进，
+       * 窗口刚启动还在 `show: false`、或被别的窗口完全遮住时，浏览器会把不可见文档的 rAF
+       * 停掉/限流到 1 帧/秒，首屏那次排版就会空等到宿主判超时。和导出 PDF 那个隐藏窗口
+       * （src/pdf.ts）是同一条理由——那边靠它把十页文档从十几秒拉回一秒。
+       */
+      backgroundThrottling: false,
     },
   })
 

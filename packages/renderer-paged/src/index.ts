@@ -123,9 +123,11 @@ function applyScroll(ratio) {
   // 等两帧再放行上报：scroll 事件是异步派发的，过早清标记会把同步滚当成用户滚动。
   requestAnimationFrame(function() { requestAnimationFrame(function() { applyingScroll = false; }); });
 }
-function report(status, pages) {
-  window.__stylemdPaged = { status: status, pages: pages };
-  if (window.parent !== window) window.parent.postMessage({ type: 'stylemd:pagination', id: ${id}, status: status, pages: pages }, '*');
+// message 是可选的失败原因：正常路径不带，带上了宿主就把它记进 console / 挂到状态栏的 title 上。
+// 协议向后兼容——多出来的字段老宿主忽略即可，__stylemdPaged 的形状也照旧。
+function report(status, pages, message) {
+  window.__stylemdPaged = { status: status, pages: pages, message: message || '' };
+  if (window.parent !== window) window.parent.postMessage({ type: 'stylemd:pagination', id: ${id}, status: status, pages: pages, message: message || '' }, '*');
 }
 function addStyle(css) {
   var style = document.createElement('style');
@@ -270,8 +272,12 @@ async function stabilizeTableLayouts() {
   if (!value) return;
   // 宿主刚挂上 iframe 时（React 首帧）这里可能还没有布局视口，量出来的宽度是 0；
   // 0 会让「定列宽 + 续页补表头」整段失效，跨页表格就退回自然列宽。量到宽度为止再继续。
+  // 封顶两样：帧数之外再加约 3 秒的墙钟。不可见文档的 rAF 会被限流到 1 帧/秒，只数帧的话
+  // 这 60 帧会空等成整整一分钟（宿主那条 60 秒超时就卡在这个量上）。量不到就按自然列宽走，
+  // 后面本来就有兜底。
+  var deadline = Date.now() + 3000;
   var width = measurePageContentWidth(value);
-  for (var attempt = 0; attempt < 60 && !width; attempt++) {
+  for (var attempt = 0; attempt < 60 && !width && Date.now() < deadline; attempt++) {
     await new Promise(function (resolve) { requestAnimationFrame(function () { resolve(); }); });
     width = measurePageContentWidth(value);
   }
@@ -440,9 +446,14 @@ function installCaptionKeepWithNextHook() {
     return breakToken;
   });
 }
-window.addEventListener('load', async function() {
-  var toolbar = document.querySelector('.stylemd-toolbar');
-  if (toolbar) toolbar.remove();
+// 分页整条链都靠 requestAnimationFrame 推进：量列宽要等帧、Paged.js 每排一页也要等一帧。
+// 宿主自己不可见时（窗口被别的窗口完全遮住 / 标签在后台 / 桌面壳还在 show:false 阶段），
+// 浏览器会把不可见文档的 rAF 停掉或限流到 1 帧/秒——这时开跑只会空等到宿主判超时，
+// 等人一动（窗口回到前台、rAF 恢复）才好，首屏那句「分页失败」就是这么来的。
+// 所以不可见就先不开始，注册 visibilitychange 等真的可见了再跑；可见时走的还是原来那条路，时序不变。
+var toolbar = null;
+var paginationStarted = false;
+async function runPagination() {
   try {
     await document.fonts.ready;
     // 表格列宽必须在分页前定死：分页后再改会把行重新排高、把内容挤出页面。
@@ -463,12 +474,42 @@ window.addEventListener('load', async function() {
     await new Promise(function (resolve) { requestAnimationFrame(function () { requestAnimationFrame(resolve); }); });
     report('paged', flow.total);
   } catch (error) {
-    // 分页失败也要露出来，别把预览停在灰底上。
+    // 渲染失败也要露出来，别把预览停在灰底上。原因原先被 catch 整个吞掉，只剩一个 error 状态，
+    // 分不清是宿主自己判的超时还是这里真抛了异常；打进控制台，并随上报带给宿主。
     reveal();
-    report('error', 0);
+    if (window.console && window.console.error) window.console.error('[stylemd] 渲染失败', error);
+    report('error', 0, error && error.message ? String(error.message) : String(error));
   } finally {
     if (toolbar) document.body.appendChild(toolbar);
   }
+}
+// 门：不可见 / 还没布局就先不开始，等信号到了再跑；started 标记保证只跑一趟。
+// 两道各自对应一种「跑也白跑」：
+//  - 宿主自己躲起来（窗口被别的窗口完全遮住 / 标签在后台）时，浏览器会把这一帧的
+//    requestAnimationFrame 停下来，分页一页都推进不了；
+//  - 文档还没有布局时（画布被从宿主摘下来、或整块 display: none），量什么都是 0——
+//    这时硬跑，Paged.js 的 new Layout 会去读 null 的 offsetParent 直接抛 TypeError
+//    （实测：display:none 的 iframe 里计算样式一切正常，但 offsetParent 为 null、
+//    clientWidth / offsetWidth 全是 0，而 rAF 照样回调）。
+function beginPagination() {
+  if (paginationStarted) return;
+  if (document.visibilityState === 'hidden') {
+    document.addEventListener('visibilitychange', beginPagination);
+    return;
+  }
+  if (document.documentElement.clientWidth === 0) {
+    // 没有布局时 rAF 仍在回调（见上），拿它当心跳轮询，等真有布局了再开跑。
+    requestAnimationFrame(beginPagination);
+    return;
+  }
+  document.removeEventListener('visibilitychange', beginPagination);
+  paginationStarted = true;
+  void runPagination();
+}
+window.addEventListener('load', function() {
+  toolbar = document.querySelector('.stylemd-toolbar');
+  if (toolbar) toolbar.remove();
+  beginPagination();
 });`
   const tag = `<script>window.PagedConfig = { auto: false };</script>\n<script>\n${safeSource}\n</script>\n<script>${lifecycle}</script>`
   return html.includes(PAGED_POLYFILL_MARKER)

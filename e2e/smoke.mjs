@@ -72,7 +72,9 @@ function startServer() {
 }
 
 const results = []
+let lastCheck = '（尚未开始）'
 function check(name, passed, detail = '') {
+  lastCheck = name
   results.push({ name, passed, detail })
   console.log(`${passed ? '  PASS' : '  FAIL'}  ${name}${detail ? `   — ${detail}` : ''}`)
 }
@@ -179,9 +181,10 @@ async function main() {
   const page = await browser.newPage({ viewport: { width: 1680, height: 1000 } })
   const consoleErrors = []
   page.on('console', (message) => {
-    if (message.type() === 'error') consoleErrors.push(message.text())
+    // 带上「上一步跑到了哪」：出错时能一眼看出是哪个环节放出来的。
+    if (message.type() === 'error') consoleErrors.push(`[上一步：${lastCheck}] ${message.text()}`)
   })
-  page.on('pageerror', (error) => consoleErrors.push(String(error)))
+  page.on('pageerror', (error) => consoleErrors.push(`[上一步：${lastCheck}] ${String(error)}`))
 
   try {
     // ?e2e=1 才会挂上编辑器调试句柄，正常使用时没有这个全局对象。
@@ -195,6 +198,28 @@ async function main() {
       return /第 1 页，共 \d+ 页/.test(text) ? text : ''
     }, { label: '底部栏显示页数' })
     check('底部栏显示页数', true, statusText.trim())
+
+    // 1b. 「刚重启后首屏」这条路径：刷新一次页面，首屏那次排版必须自己跑完。
+    //     分页整条链靠 iframe 里的 requestAnimationFrame 推进，宿主不可见时会被停摆/限流；
+    //     「不可见就先不开跑、可见了再跑，宿主那份超时不算隐藏时间」这套修复就是为它加的，
+    //     刷新等于把这一趟重放一遍。
+    await page.reload({ waitUntil: 'load' })
+    const reloadStatus = await until(
+      async () => {
+        const text = await page.locator('.statusbar .page-status').innerText()
+        return /第 1 页，共 \d+ 页/.test(text) ? text : ''
+      },
+      { label: '刷新后首屏仍能排完', timeout: 30000 },
+    )
+    check('刷新后首屏仍能自己排完（不靠动一下才恢复）', true, reloadStatus.trim())
+    // 措辞拆成「排版超时」（宿主计时）与「渲染失败」（iframe 里真抛了异常）两句：
+    // 正常流程一句都不该出现，出现就说明门或计时把首屏那次排版判错了。
+    const statusAfterReload = await page.locator('.statusbar .page-status').innerText()
+    check(
+      '正常流程不出现「排版超时」或「渲染失败」',
+      !/排版超时|渲染失败/.test(statusAfterReload),
+      statusAfterReload.trim(),
+    )
 
     // 浏览器里没有宿主通道，导出 PDF 仍旧只能走打印对话框——文案与行为都别被桌面壳那条路顺带改掉。
     const browserPrintLabel = (await page.locator('.ribbon .titlebar-actions button.primary').innerText()).trim()
@@ -2506,8 +2531,38 @@ async function main() {
     )
     check('恢复默认配色后回到纸感', backToDefault === '#1d4ed8', `--syn-heading = ${backToDefault}`)
 
+    // 12b. 画布没有布局时（被整块藏起来 / 从宿主摘下来）不能硬跑排版：这时量什么都是 0，
+    //      Paged.js 的 Layout 会去读 null 的 offsetParent 直接抛 TypeError。门得等到真有布局
+    //      再开跑，露出来之后仍然排得完——这条是在 e2e 里真的抓到过一次这个异常之后加的。
+    const hidePreview = await page.addStyleTag({ content: '.preview-frame { display: none !important; }' })
+    await page.evaluate(() => {
+      window.__stylemdEditor.setValue(`${window.__stylemdEditor.getValue()}\n\n## 藏起来时改一段\n\n正文段落。`)
+    })
+    await page.waitForTimeout(1500)
+    const statusWhileHidden = (await page.locator('.statusbar .page-status').innerText()).trim()
+    await hidePreview.evaluate((node) => node.remove())
+    const recoveredStatus = await until(
+      async () => {
+        const text = await page.locator('.statusbar .page-status').innerText()
+        return /第 1 页，共 \d+ 页/.test(text) ? text : ''
+      },
+      { label: '画布恢复显示后仍能排完', timeout: 30000 },
+    )
+    check(
+      '画布没有布局时不分页（不抛错）、露出来以后仍能排完',
+      !/渲染失败|排版超时/.test(statusWhileHidden),
+      `藏起来时「${statusWhileHidden}」→ 露出来 ${recoveredStatus.trim()}`,
+    )
+
     // 13. 控制台错误
     check('运行期无控制台错误', consoleErrors.length === 0, consoleErrors.slice(0, 2).join(' | '))
+  } catch (error) {
+    // 中途挂掉时也把已经收到的控制台错误打出来：不然「点不动 / 等不到」这类现场
+    // 只能看到 Playwright 的超时，看不到页面里真正抛了什么。
+    if (consoleErrors.length > 0) {
+      console.error(`中断前收到的控制台错误（${consoleErrors.length} 条）：\n  ${consoleErrors.slice(0, 4).join('\n  ')}`)
+    }
+    throw error
   } finally {
     await browser.close()
     server.close()

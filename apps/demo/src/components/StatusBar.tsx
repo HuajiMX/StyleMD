@@ -15,7 +15,13 @@ interface StatusBarProps {
   cursorRole: string | undefined
   charCount: number
   pageCount: number | null
-  pagedStatus: 'pending' | 'paged' | 'error'
+  /**
+   * 排版状态。`error`（iframe 里真抛了异常）与 `timeout`（宿主自己的 60 秒兜底计时）分开显示，
+   * 别再共用一句话——出事时得能一眼看出是哪条路。
+   */
+  pagedStatus: 'pending' | 'paged' | 'error' | 'timeout'
+  /** 渲染失败的原因，挂在状态栏那串字的 title 上（界面文案仍是一句话）。 */
+  pagedError?: string
   zoom: number
   onZoomChange: (zoom: number) => void
   /** 最后一次保存：时间与方式（自动写会话 / 手动存文件）；null 表示还没保存过。 */
@@ -31,8 +37,10 @@ export function StatusBar(props: StatusBarProps) {
     props.pagedStatus === 'paged'
       ? `第 1 页，共 ${props.pageCount ?? 0} 页`
       : props.pagedStatus === 'error'
-        ? '分页失败'
-        : '正在渲染…'
+        ? '渲染失败'
+        : props.pagedStatus === 'timeout'
+          ? '排版超时'
+          : '正在渲染…'
 
   const viewModes: { mode: ViewMode; label: string; glyph: ReactNode }[] = [
     { mode: 'edit', label: '仅展示编辑器', glyph: <IconEditorOnly /> },
@@ -53,7 +61,12 @@ export function StatusBar(props: StatusBarProps) {
         <IconOutline />
       </button>
 
-      <span className="status-item page-status">{pageText}</span>
+      <span
+        className="status-item page-status"
+        title={props.pagedStatus === 'error' && props.pagedError ? props.pagedError : undefined}
+      >
+        {pageText}
+      </span>
       <span className="status-item">{props.charCount} 字符</span>
       <span className={`status-item locator${props.cursorRole ? ' hit' : ''}`}>
         定位：{roleLabel(props.cursorRole ?? 'body.text')}

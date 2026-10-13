@@ -110,7 +110,13 @@ export function App() {
     clampEditorFontPx(session?.editorFontPx ?? EDITOR_FONT_DEFAULT_PX),
   )
   const [autoDetect, setAutoDetect] = useState(true)
-  const [pagedStatus, setPagedStatus] = useState<'pending' | 'paged' | 'error'>('pending')
+  /**
+   * 排版状态。`error` 与 `timeout` 分开：前者是 iframe 里真抛了异常上报回来（原文挂在 `pagedError` 上），
+   * 后者是宿主自己那份 60 秒兜底计时——两者原来共用一句「分页失败」，出事时根本分不出是哪条路。
+   */
+  const [pagedStatus, setPagedStatus] = useState<'pending' | 'paged' | 'error' | 'timeout'>('pending')
+  /** 渲染失败的原因（iframe 的 catch 里那份），只挂在状态栏那串字的 title 上。 */
+  const [pagedError, setPagedError] = useState('')
   const [readyId, setReadyId] = useState('')
   const [pageCount, setPageCount] = useState<number | null>(null)
   const [viewMode, setViewMode] = useState<ViewMode>(() =>
@@ -330,17 +336,45 @@ export function App() {
 
   useEffect(() => {
     setPagedStatus('pending')
+    setPagedError('')
     setPageCount(null)
-    const timer = window.setTimeout(() => setPagedStatus('error'), 60000)
+    let timer: number | null = null
+    let settled = false
+    const clearTimer = () => {
+      if (timer !== null) window.clearTimeout(timer)
+      timer = null
+    }
+    /**
+     * 排版全靠 iframe 里的 requestAnimationFrame 推进，宿主本身不可见时（终端把窗口完全遮住、
+     * 标签切到后台、桌面壳还在 show:false 阶段）整条链会停下来。这段「停」不能算进超时里：
+     * 否则用户离开两分钟再回来，门一开就被告知「排版超时」。隐藏期间干脆不挂表，回到可见时从零重计。
+     */
+    const armTimer = () => {
+      if (settled) return
+      clearTimer()
+      timer = window.setTimeout(() => setPagedStatus('timeout'), 60000)
+    }
+    const onVisibility = () => {
+      if (document.hidden) clearTimer()
+      else armTimer()
+    }
+    if (!document.hidden) armTimer()
+    document.addEventListener('visibilitychange', onVisibility)
     const receive = (event: MessageEvent) => {
       const data = event.data
       if (data?.type !== 'stylemd:pagination' || data.id !== previewId) return
       const slot = frameSlotOf(event.source)
       if (!slot) return
       if (data.status !== 'paged' && data.status !== 'error') return
-      window.clearTimeout(timer)
+      settled = true
+      clearTimer()
       setPageCount(Number.isInteger(data.pages) && data.pages > 0 ? data.pages : 0)
       setPagedStatus(data.status)
+      // 失败原因随上报一起带过来（iframe 的 catch 里抓到的原文），记进 console 并挂到状态栏的 title 上。
+      if (data.status === 'error' && typeof data.message === 'string' && data.message) {
+        setPagedError(data.message)
+        console.error('[stylemd] 渲染失败', data.message)
+      }
       // 排好的是另一块：只换身份（层级/可见性），两块 iframe 都不重新加载，所以看不到闪白。
       if (slot !== activeSlotRef.current) {
         activeSlotRef.current = slot
@@ -364,7 +398,8 @@ export function App() {
     window.addEventListener('message', receiveScroll)
     window.addEventListener('message', receivePointer)
     return () => {
-      window.clearTimeout(timer)
+      clearTimer()
+      document.removeEventListener('visibilitychange', onVisibility)
       window.removeEventListener('message', receive)
       window.removeEventListener('message', receiveScroll)
       window.removeEventListener('message', receivePointer)
@@ -840,7 +875,14 @@ export function App() {
         cursorRole={cursorRole}
         charCount={markdown.length}
         pageCount={pageCount}
-        pagedStatus={readyId === previewId ? pagedStatus : pagedStatus === 'error' ? 'error' : 'pending'}
+        pagedStatus={
+          readyId === previewId
+            ? pagedStatus
+            : pagedStatus === 'error' || pagedStatus === 'timeout'
+              ? pagedStatus
+              : 'pending'
+        }
+        pagedError={pagedError}
         zoom={zoom}
         onZoomChange={setZoom}
         saved={saved}

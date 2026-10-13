@@ -82,7 +82,14 @@ async function waitForPagination(win: BrowserWindow): Promise<void> {
       true,
     )) as string | null | undefined
     if (status === 'paged') return
-    if (status === 'error') throw new Error('文档分页失败')
+    if (status === 'error') {
+      // 失败原因由预览脚本随上报带出来（它原先被 catch 吞掉）；落到抛出的错里，终端能直接看到原文。
+      const message = (await win.webContents.executeJavaScript(
+        'window.__stylemdPaged && window.__stylemdPaged.message',
+        true,
+      )) as string | null | undefined
+      throw new Error(`文档渲染失败${message ? `：${message}` : ''}`)
+    }
     await new Promise((resolve) => setTimeout(resolve, POLL_INTERVAL_MS))
   }
   throw new Error('文档分页超时')

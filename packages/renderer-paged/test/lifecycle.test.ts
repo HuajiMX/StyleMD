@@ -52,6 +52,34 @@ describe('预览分页生命周期', () => {
     const failure = between("} catch (error) {", 'report(\'error\'')
     expect(failure).toContain('reveal()')
   })
+
+  it('渲染失败不再被 catch 吞掉：进控制台，并随上报把原因带给宿主', () => {
+    const failure = between("} catch (error) {", 'report(\'error\'')
+    expect(failure).toContain('console.error')
+    // 上报多带一个可选字段，协议向后兼容（正常路径是空串）
+    expect(preview).toContain('function report(status, pages, message)')
+    expect(preview).toContain("report('error', 0,")
+  })
+
+  it('不可见 / 还没布局就先不开始分页，等信号到了再跑，而且只跑一趟', () => {
+    const gate = between('function beginPagination()', "window.addEventListener('load'")
+    // 宿主自己躲起来时（窗口被遮住 / 标签在后台 / 壳里还在 show:false）rAF 会停摆或限流，
+    // 这时开跑只会空等到宿主判超时——门就卡在可见性上
+    expect(gate).toContain("document.visibilityState === 'hidden'")
+    expect(gate).toContain("'visibilitychange'")
+    // 文档没有布局时（画布被摘下来 / 整块 display:none）量什么都是 0，硬跑会让 Paged.js
+    // 去读 null 的 offsetParent 抛 TypeError，所以这一道也要等
+    expect(gate).toContain('document.documentElement.clientWidth === 0')
+    expect(gate).toContain('requestAnimationFrame(beginPagination)')
+    expect(gate).toContain('paginationStarted')
+  })
+
+  it('量列宽的等待循环既封顶帧数也封顶墙钟，别在 1 帧/秒下放大成整整一分钟', () => {
+    const loop = between('var deadline = Date.now() + 3000;', 'if (!width) return;')
+    expect(loop).toContain('attempt < 60')
+    expect(loop).toContain('Date.now() < deadline')
+    expect(loop).toContain('3000')
+  })
 })
 
 describe('预览里的快捷键转发', () => {
