@@ -708,7 +708,7 @@ function TableSizeGroup({ ctx }: { ctx: TableEditContext }) {
         </Field>
         {/* 百分比框只在「百分比」模式下出现：按内容 / 撑满时它没有作用，摆着只会占地方。 */}
         {mode === 'percent' ? (
-          <Field label="宽度 %" compact hint="占纸张内容区的百分比，最大 100%">
+          <Field label="宽度" compact hint="占纸张内容区的百分比，最大 100%">
             <NumberInput
               value={percent}
               inherited={false}
@@ -718,11 +718,26 @@ function TableSizeGroup({ ctx }: { ctx: TableEditContext }) {
               ariaLabel="表格宽度百分比"
               onChange={(value) => ctx.onTableChange({ widthPercent: Math.min(100, Math.max(1, value ?? 100)) })}
             />
+            <span className="unit">%</span>
           </Field>
         ) : null}
+        {/* 分布列 / 分布行不单占一行（左边会空一大截），也不并排摆（这一组会被横向撑宽一大截）：
+            各跟着上面一行表单排在同一条横线上，两块都贴这一组的右边，两枚开关才对得齐。 */}
+        <span className="rgroup-end">
+          <span className="rgroup-sep" />
+          <IconButton
+            label="分布列"
+            text="分布列"
+            pressed={table.distributeColumns}
+            title="分布列：各列等宽，表格总宽不变"
+            onClick={() => ctx.onTableChange({ distributeColumns: !table.distributeColumns })}
+          >
+            <IconDistributeColumns />
+          </IconButton>
+        </span>
       </div>
       <div className="rgroup-row">
-        <Field label="最小宽度 %" compact hint="表格至少占内容区的百分比，0 表示不限">
+        <Field label="最小宽度" compact hint="表格至少占内容区的百分比，0 表示不限">
           <NumberInput
             value={table.minWidthPercent}
             inherited={table.minWidthPercent === 0}
@@ -732,8 +747,9 @@ function TableSizeGroup({ ctx }: { ctx: TableEditContext }) {
             ariaLabel="表格最小宽度百分比"
             onChange={(value) => ctx.onTableChange({ minWidthPercent: Math.min(100, Math.max(0, value ?? 0)) })}
           />
+          <span className="unit">%</span>
         </Field>
-        <Field label="最小高度 pt" compact hint="整张表至少这么高（多出来的高度由各行分摊），0 表示不限">
+        <Field label="最小高度" compact hint="整张表至少这么高（多出来的高度由各行分摊），0 表示不限">
           <NumberInput
             value={table.minHeightPt}
             inherited={table.minHeightPt === 0}
@@ -742,26 +758,20 @@ function TableSizeGroup({ ctx }: { ctx: TableEditContext }) {
             ariaLabel="表格最小高度 pt"
             onChange={(value) => ctx.onTableChange({ minHeightPt: Math.max(0, value ?? 0) })}
           />
+          <span className="unit">pt</span>
         </Field>
-        <span className="rgroup-sep" />
-        <IconButton
-          label="分布列"
-          text="分布列"
-          pressed={table.distributeColumns}
-          title="分布列：各列等宽，表格总宽不变"
-          onClick={() => ctx.onTableChange({ distributeColumns: !table.distributeColumns })}
-        >
-          <IconDistributeColumns />
-        </IconButton>
-        <IconButton
-          label="分布行"
-          text="分布行"
-          pressed={table.distributeRows}
-          title="分布行：各行等高（按最高的一行），预览与导出 PDF 时生效"
-          onClick={() => ctx.onTableChange({ distributeRows: !table.distributeRows })}
-        >
-          <IconDistributeRows />
-        </IconButton>
+        <span className="rgroup-end">
+          <span className="rgroup-sep" />
+          <IconButton
+            label="分布行"
+            text="分布行"
+            pressed={table.distributeRows}
+            title="分布行：各行等高（按最高的一行），预览与导出 PDF 时生效"
+            onClick={() => ctx.onTableChange({ distributeRows: !table.distributeRows })}
+          >
+            <IconDistributeRows />
+          </IconButton>
+        </span>
       </div>
     </RibbonGroup>
   )
@@ -857,7 +867,7 @@ function TableBorderGroup({ ctx }: { ctx: TableEditContext }) {
             onChange={(value) => setLine({ ...line, style: value })}
           />
         </Field>
-        <Field label="粗细 pt" compact hint="线宽（pt），同样要点预设才应用">
+        <Field label="粗细" compact hint="线宽（pt），同样要点预设才应用">
           <NumberInput
             value={line.widthPt}
             inherited={false}
@@ -866,6 +876,7 @@ function TableBorderGroup({ ctx }: { ctx: TableEditContext }) {
             ariaLabel="边框粗细 pt"
             onChange={(value) => setLine({ ...line, widthPt: Math.max(0.25, value ?? 1) })}
           />
+          <span className="unit">pt</span>
         </Field>
         <Field label="颜色" compact hint="线颜色，同样要点预设才应用">
           <input

@@ -264,6 +264,9 @@ input[type='radio']:focus-visible {
 .rgroup.grow .rgroup-body { overflow: auto; }
 .rgroup-row { display: flex; align-items: center; gap: 6px; min-width: 0; }
 .rgroup-sep { flex: 0 0 auto; width: 1px; height: 16px; margin: 0 3px; background: var(--line-strong); }
+/* 贴在这一组右边的一小块（分隔线 + 一枚开关）：左边留给表单，右边那一列在几行之间对得齐
+   （margin-left: auto 顶过去）。「大小」组那两枚分布行 / 分布列就是这么一上一下各站一行。 */
+.rgroup .rgroup-end { display: inline-flex; align-items: center; gap: 6px; margin-left: auto; }
 
 /* 功能区里的控件要有确定的宽度：不然 flex 会把它们压成一条线。 */
 .rgroup .field { flex: 0 0 auto; }
@@ -324,6 +327,13 @@ input[type='radio']:focus-visible {
 }
 .icon-button:hover, .icon-toggle:hover { background: #e6eaf1; }
 .icon-toggle.on { background: var(--accent-soft); color: var(--accent); }
+/* IconButton 也能当开关用（传 pressed，例如「分布行 / 分布列」）：开着的状态跟 IconToggle 一样染强调色。
+   这一条以前漏了，那两枚按钮开着时看不出任何变化。 */
+.icon-button.on { background: var(--accent-soft); color: var(--accent); }
+/* 开着的按钮悬停时要保住强调色：`.ribbon button:hover`（0,2,1）比上面那条（0,2,0）权重高，
+   不补这一条的话，点完开关、指针还停在按钮上，看到的是灰色悬停底——像是没生效。 */
+.icon-button.on:hover,
+.icon-toggle.on:hover { background: var(--accent-soft); }
 .icon-button:disabled { opacity: 0.4; cursor: default; }
 .icon-button:disabled:hover { background: transparent; }
 .icon-button.with-text { padding: 0 7px 0 5px; font-size: 11px; }
