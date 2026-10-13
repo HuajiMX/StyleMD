@@ -3,8 +3,8 @@ import type { EditorScheme } from '@stylemd/editor-theme'
 import { StyleGallery } from './StyleGallery'
 import { FileMenu } from './FileMenu'
 import { FileHeading } from './FileHeading'
-import type { OpenedFile } from '../lib/document'
 import { canExportPdfDirectly } from '../lib/desktop'
+import { acceleratorLabel } from '../lib/shortcuts'
 import {
   DefaultsGroup,
   EditGroup,
@@ -53,7 +53,7 @@ interface RibbonProps {
   onPageChange: (patch: Partial<StyleTheme['document']['page']>) => void
   onEditFurniture: (area: 'header' | 'footer') => void
   onDefaultsChange: (patch: Partial<StyleTheme['document']['defaults']>) => void
-  onOpenFile: (file: OpenedFile) => void
+  onOpenDocument: () => void
   onLoadSample: () => void
   onNewDocument: () => void
   onSaveDocument: () => void
@@ -118,6 +118,9 @@ export function Ribbon(props: RibbonProps) {
         ? { className: 'chip-warn', text: `${props.status.warnings} 条提示` }
         : { className: 'chip-ok', text: '样式包正常' }
 
+  // 桌面壳里点一下就直接出 PDF 并存盘（弹系统保存框），浏览器里只能走打印对话框。
+  const printLabel = canExportPdfDirectly() ? '导出 PDF' : '打印 / 导出 PDF'
+
   return (
     <header className="ribbon">
       <div className="ribbon-titlebar">
@@ -135,9 +138,14 @@ export function Ribbon(props: RibbonProps) {
             {statusChip.text}
             <span className="chip-sub">角色 {props.status.roles}</span>
           </span>
-          <button type="button" className="primary" onClick={props.onPrint} disabled={!props.canPrint}>
-            {/* 桌面壳里点一下就直接出 PDF 并存盘（弹系统保存框），浏览器里只能走打印对话框。 */}
-            {canExportPdfDirectly() ? '导出 PDF' : '打印 / 导出 PDF'}
+          <button
+            type="button"
+            className="primary"
+            title={`${printLabel}（${acceleratorLabel('print')}）`}
+            onClick={props.onPrint}
+            disabled={!props.canPrint}
+          >
+            {printLabel}
           </button>
         </div>
       </div>
@@ -146,7 +154,7 @@ export function Ribbon(props: RibbonProps) {
         <FileMenu
           fileName={props.fileName}
           onNew={props.onNewDocument}
-          onOpenFile={props.onOpenFile}
+          onOpen={props.onOpenDocument}
           onLoadSample={props.onLoadSample}
           onSave={props.onSaveDocument}
           onSaveAs={props.onSaveDocumentAs}

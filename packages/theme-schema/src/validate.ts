@@ -1,4 +1,4 @@
-import { DEFAULT_DOCUMENT_DEFAULTS, DEFAULT_PAGE, PAGE_SIZES_MM } from './defaults'
+import { DEFAULT_DOCUMENT_DEFAULTS, DEFAULT_PAGE, PAGE_SIZES_MM, pageDimensionsMm } from './defaults'
 import { isKnownRole, roleCategory } from './roles'
 import { CURRENT_SCHEMA_VERSION, type RoleStyle, type StyleTheme } from './types'
 import { validateShape } from './shape'
@@ -76,9 +76,7 @@ export function validateTheme(raw: unknown): ThemeValidationResult {
     for (const [side, value] of Object.entries(page.marginMm)) {
       checkNonNegative(value, `页边距 ${side}`, out)
     }
-    const size = typeof page.size === 'object' ? page.size : PAGE_SIZES_MM[typeof page.size === 'string' && Object.hasOwn(PAGE_SIZES_MM, page.size) ? page.size : 'A4']!
-    const width = page.orientation === 'landscape' ? size.heightMm : size.widthMm
-    const height = page.orientation === 'landscape' ? size.widthMm : size.heightMm
+    const { widthMm: width, heightMm: height } = pageDimensionsMm(page)
     if (page.marginMm.left + page.marginMm.right >= width || page.marginMm.top + page.marginMm.bottom >= height) {
       out.errors.push('页边距总和必须小于纸张尺寸，正文区域不能为空')
     }

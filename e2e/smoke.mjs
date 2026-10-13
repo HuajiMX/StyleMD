@@ -1896,7 +1896,8 @@ async function main() {
     // 9. 文件菜单与标题栏：文件名就地重命名、保存、新建、载入示例
     await page.getByRole('button', { name: '文件', exact: true }).click()
     await page.waitForSelector('.file-panel', { timeout: 5000 })
-    const menuItems = await page.locator('.file-item').allInnerTexts()
+    // 命令名单独取：菜单项右边现在挂着快捷键提示（Ctrl+S 之类），整行文本里带着它。
+    const menuItems = await page.locator('.file-item-label').allInnerTexts()
     check(
       '新增「文件」菜单',
       ['新建', '打开…', '保存', '另存为…', '自动保存'].every((label) => menuItems.includes(label)) &&
@@ -1996,6 +1997,182 @@ async function main() {
       { label: '再次「保存」直接写回原文件' },
     )
     check('已有文件句柄时不再弹选择框', secondWrite.picked === 1, `选择框只弹过 ${secondWrite.picked} 次`)
+
+    // 9b. 快捷键：桌面壳去掉了默认菜单栏，加速键没有宿主可挂，所以快捷键全在渲染进程里听 keydown，
+    //     浏览器与桌面壳共用这一套。Playwright 走 CDP 把按键直接送进渲染进程，验的是「按键到了页面上会做什么」；
+    //     真实浏览器里 Ctrl+N / Ctrl+O 可能先被浏览器自己吃掉（开新窗口 / 打开文件），桌面壳里不会。
+    await page.getByRole('button', { name: '文件', exact: true }).click()
+    await page.waitForSelector('.file-panel', { timeout: 5000 })
+    const shortcutHints = await page.locator('.file-item-keys').allInnerTexts()
+    const ariaByLabel = Object.fromEntries(
+      await page.locator('.file-item[aria-keyshortcuts]').evaluateAll((nodes) =>
+        nodes.map((node) => [
+          node.querySelector('.file-item-label')?.textContent ?? '',
+          node.getAttribute('aria-keyshortcuts') ?? '',
+        ]),
+      ),
+    )
+    // 提示要跟命令名同一行、并且贴在这一行的右端（label 撑满剩余宽度把它顶过去）
+    const hintLayout = await page.locator('.file-item[aria-keyshortcuts]').evaluateAll((nodes) =>
+      nodes.map((node) => {
+        const label = node.querySelector('.file-item-label')?.getBoundingClientRect()
+        const keys = node.querySelector('.file-item-keys')?.getBoundingClientRect()
+        if (!label || !keys) return false
+        const middle = (box) => box.top + box.height / 2
+        return Math.abs(middle(label) - middle(keys)) < 1.5 && keys.left >= label.right && keys.right <= node.getBoundingClientRect().right + 0.5
+      }),
+    )
+    check(
+      '「文件」菜单把快捷键写在命令右边',
+      shortcutHints.length === 4 &&
+        hintLayout.length === 4 &&
+        hintLayout.every(Boolean) &&
+        shortcutHints.every((hint) => /^(Ctrl\+|⌘)/.test(hint)) &&
+        /^(Control|Meta)\+S$/.test(ariaByLabel['保存'] ?? '') &&
+        /^(Control|Meta)\+Shift\+S$/.test(ariaByLabel['另存为…'] ?? ''),
+      `${shortcutHints.join(' / ')}（aria: ${JSON.stringify(ariaByLabel)}）`,
+    )
+    // 留一张「文件」菜单展开的图：快捷键提示贴没贴到右边，看这张比读断言快。
+    await page.screenshot({ path: path.join(artifactDir, 'file-menu-shortcuts.png'), fullPage: false })
+    await page.keyboard.press('Escape')
+
+    const writesBeforeShortcut = (await page.evaluate(() => window.__fileSaves)).writes.length
+    await page.locator('.source-pane .cm-content').click()
+    await page.keyboard.press('Control+KeyS')
+    const shortcutWrite = await until(
+      async () => {
+        const state = await page.evaluate(() => window.__fileSaves)
+        return state.writes.length > writesBeforeShortcut ? state : null
+      },
+      { label: 'Ctrl+S 保存' },
+    )
+    check(
+      'Ctrl+S 触发保存（光标在编辑器里也接得住）',
+      shortcutWrite.writes.length === writesBeforeShortcut + 1 && shortcutWrite.picked === 1,
+      `写入 ${shortcutWrite.writes.length} 次，选择框弹过 ${shortcutWrite.picked} 次`,
+    )
+
+    await page.keyboard.press('Control+Shift+KeyS')
+    const shortcutSaveAs = await until(
+      async () => {
+        const state = await page.evaluate(() => window.__fileSaves)
+        return state.writes.length === shortcutWrite.writes.length + 1 ? state : null
+      },
+      { label: 'Ctrl+Shift+S 另存为' },
+    )
+    check(
+      'Ctrl+Shift+S 走另存为（会再弹一次选择框）',
+      shortcutSaveAs.picked === shortcutWrite.picked + 1,
+      `选择框弹过 ${shortcutSaveAs.picked} 次`,
+    )
+
+    const zoomText = async () => (await page.locator('.zoom-value').innerText()).trim()
+    const zoomBeforeShortcut = await zoomText()
+    await page.keyboard.press('Control+Equal')
+    const zoomAfterShortcut = await until(
+      async () => {
+        const value = await zoomText()
+        return value === zoomBeforeShortcut ? '' : value
+      },
+      { label: 'Ctrl+= 放大预览' },
+    )
+    check(
+      'Ctrl+= 放大预览',
+      Number.parseInt(zoomAfterShortcut, 10) > Number.parseInt(zoomBeforeShortcut, 10),
+      `${zoomBeforeShortcut} → ${zoomAfterShortcut}`,
+    )
+    await page.keyboard.press('Control+Digit0')
+    const zoomAfterReset = await until(
+      async () => {
+        const value = await zoomText()
+        return value === '100%' ? value : ''
+      },
+      { label: 'Ctrl+0 缩放回到 100%' },
+    )
+    check('Ctrl+0 把预览缩放重置为 100%', true, `${zoomAfterShortcut} → ${zoomAfterReset}`)
+
+    // 点过预览之后焦点进了预览那个文档，键事件不会冒泡到宿主，只能由预览自己认出来转回去。
+    // 这正是「先点预览再按快捷键没反应」那个现象，所以先确认焦点真的落进了 iframe。
+    await page.locator('.preview-iframe').click({ position: { x: 24, y: 24 } })
+    const focusInPreview = await page.evaluate(() => document.activeElement?.tagName === 'IFRAME')
+    const zoomBeforePreviewKeys = await zoomText()
+    await page.keyboard.press('Control+Equal')
+    const zoomAfterPreviewKeys = await until(
+      async () => {
+        const value = await zoomText()
+        return value === zoomBeforePreviewKeys ? '' : value
+      },
+      { label: '焦点在预览里时的 Ctrl+=' },
+    )
+    check(
+      '焦点在预览里时 Ctrl+= 也缩放（预览把按键转回宿主）',
+      focusInPreview && Number.parseInt(zoomAfterPreviewKeys, 10) > Number.parseInt(zoomBeforePreviewKeys, 10),
+      `焦点落进 iframe=${focusInPreview}，${zoomBeforePreviewKeys} → ${zoomAfterPreviewKeys}`,
+    )
+    const writesBeforePreviewKeys = (await page.evaluate(() => window.__fileSaves)).writes.length
+    await page.keyboard.press('Control+KeyS')
+    const previewKeysSave = await until(
+      async () => {
+        const state = await page.evaluate(() => window.__fileSaves)
+        return state.writes.length > writesBeforePreviewKeys ? state : null
+      },
+      { label: '焦点在预览里时的 Ctrl+S' },
+    )
+    check(
+      '焦点在预览里时 Ctrl+S 也保存',
+      previewKeysSave.writes.length === writesBeforePreviewKeys + 1,
+      `写入 ${previewKeysSave.writes.length} 次`,
+    )
+
+    await page.locator('.source-pane .cm-content').click()
+    await page.keyboard.press('Control+KeyN')
+    const blankByShortcut = await until(
+      async () => {
+        const value = await editorValue(page)
+        return value.includes('title: 未命名文档') ? value : ''
+      },
+      { label: 'Ctrl+N 新建文档' },
+    )
+    check('Ctrl+N 新建文档', blankByShortcut.startsWith('---'), '与「文件 → 新建」同一份处理')
+
+    // Ctrl+O 打开：把系统文件对话框换成假句柄，直接看文档有没有真的换掉
+    await page.evaluate(() => {
+      window.__openPicks = 0
+      window.showOpenFilePicker = async () => {
+        window.__openPicks += 1
+        return [
+          {
+            name: '快捷键打开.md',
+            async getFile() {
+              return new File(
+                ['---\ntitle: 快捷键打开\n---\n\n# 快捷键打开的文档\n'],
+                '快捷键打开.md',
+                { type: 'text/markdown' },
+              )
+            },
+          },
+        ]
+      }
+    })
+    await page.locator('.source-pane .cm-content').click()
+    await page.keyboard.press('Control+KeyO')
+    const openedByShortcut = await until(
+      async () => {
+        const value = await editorValue(page)
+        return value.includes('快捷键打开的文档') ? value : ''
+      },
+      { label: 'Ctrl+O 打开 Markdown' },
+    )
+    const openedName = (await page.locator('.doc-file').innerText()).trim()
+    check(
+      'Ctrl+O 打开 Markdown 并换成打开的文件名',
+      openedByShortcut.length > 0 && openedName === '快捷键打开',
+      `标题栏：${openedName}`,
+    )
+    // 后面「会话恢复」那条要的是「重命名后的文件名」，先改回去（这段只是回到原状，不是新能力）。
+    await page.locator('.doc-file').click()
+    await page.locator('.doc-file-input').fill('重命名后的文件名')
+    await page.keyboard.press('Enter')
 
     await page.getByRole('button', { name: '文件', exact: true }).click()
     await page.waitForSelector('.file-panel', { timeout: 5000 })

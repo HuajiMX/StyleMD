@@ -27,6 +27,7 @@ import {
   documentTitle,
   fileStem,
   markdownFileName,
+  openMarkdownFile,
   saveMarkdownAs,
   writeToHandle,
   type FileHandle,
@@ -37,6 +38,7 @@ import { desktopBridge } from './lib/desktop'
 import { specimenFontFaces } from './lib/inlineStyle'
 import { documentOutline, type OutlineItem } from './lib/outline'
 import { formatSavedAt, loadAutoSave, loadSession, saveAutoSave, saveSession } from './lib/session'
+import { previewShortcuts, useShortcuts, type ShortcutId } from './lib/shortcuts'
 import type { SourceEditorHandle } from './lib/editor/types'
 import { activeScheme, applyScheme, loadSchemeLibrary, saveSchemeLibrary } from './lib/editor/scheme'
 import { SCHEME_RIBBON_LIMIT, markSchemeUsed, orderSchemesByRecent, type EditorSchemeLibrary } from '@stylemd/editor-theme'
@@ -134,6 +136,13 @@ export function App() {
   const editorRef = useRef<SourceEditorHandle | null>(null)
   /** 从文件打开 / 另存为拿到的句柄：「保存」写回它，没有就当「另存为」处理。 */
   const fileHandleRef = useRef<FileHandle | null>(null)
+  /**
+   * 打开 Markdown 的兜底通道：没有 File System Access API（或系统对话框用不了）时用隐藏的
+   * `<input type=file>`，两者都收在这个入口里，「文件」菜单与 Ctrl+O 共用一份。
+   */
+  const fileInputRef = useRef<HTMLInputElement>(null)
+  /** 等 `<input type=file>` 回话的那次选择；用 Promise 包一层，调用处 await 得到文件或 null。 */
+  const pendingPick = useRef<((file: File | null) => void) | null>(null)
   const scrollRatioRef = useRef(0)
   /** iframe 的 onLoad 回调要拿最新缩放，但它不在 state 的渲染闭包里，用 ref 兜住。 */
   const zoomRef = useRef(zoom)
@@ -231,7 +240,8 @@ export function App() {
   // 预览与导出共用 result.html（同一个渲染函数），预览只是额外插入了纸张外壳与 Paged.js。
   const previewHtml = useMemo(() => {
     const html = result.html.replace('<head>', '<head><meta http-equiv="Content-Security-Policy" content="default-src \'none\'; script-src \'unsafe-inline\'; style-src \'unsafe-inline\'; img-src data: https: http:; font-src data:; base-uri \'none\'; form-action \'none\'">')
-    return injectPagedPolyfill(injectHeadStyle(html, PREVIEW_CHROME_CSS), pagedPolyfill, previewId)
+    // 键位表一并交给预览：焦点在预览里时宿主的 window 收不到键事件，得由帧认出来再转回来。
+    return injectPagedPolyfill(injectHeadStyle(html, PREVIEW_CHROME_CSS), pagedPolyfill, previewId, previewShortcuts())
   }, [result.html, previewId])
 
   // 两块画布各自装着哪一版：a 先显示第一版，之后每一版都排进另一块，排完再换过来。
@@ -271,6 +281,17 @@ export function App() {
     }
   }, [frameRefs])
 
+  /** 这条消息来自哪块画布？两块都不是就返回 null（比如以后嵌了别的页面进来）。 */
+  const frameSlotOf = useCallback(
+    (source: MessageEventSource | null): PreviewSlot | null =>
+      source === frameARef.current?.contentWindow
+        ? 'a'
+        : source === frameBRef.current?.contentWindow
+          ? 'b'
+          : null,
+    [],
+  )
+
   /**
    * 画布一挂上就把缩放与「当前进度」告诉它。这时分页多半还没跑完，预览脚本会先把它们记下，
    * 等页面排好再应用——新预览露面的那一刻就已经在原来的位置，不会有跳回文首的动作。
@@ -291,15 +312,10 @@ export function App() {
     setPagedStatus('pending')
     setPageCount(null)
     const timer = window.setTimeout(() => setPagedStatus('error'), 60000)
-    const slotOf = (source: MessageEventSource | null): PreviewSlot | null => {
-      if (source === frameARef.current?.contentWindow) return 'a'
-      if (source === frameBRef.current?.contentWindow) return 'b'
-      return null
-    }
     const receive = (event: MessageEvent) => {
       const data = event.data
       if (data?.type !== 'stylemd:pagination' || data.id !== previewId) return
-      const slot = slotOf(event.source)
+      const slot = frameSlotOf(event.source)
       if (!slot) return
       if (data.status !== 'paged' && data.status !== 'error') return
       window.clearTimeout(timer)
@@ -316,12 +332,12 @@ export function App() {
     const receiveScroll = (event: MessageEvent) => {
       const data = event.data
       // 只认正在显示的那块：待换的那块是被程序滚过去的，不能反过来推编辑器。
-      if (data?.type !== 'stylemd:scroll-report' || slotOf(event.source) !== activeSlotRef.current) return
+      if (data?.type !== 'stylemd:scroll-report' || frameSlotOf(event.source) !== activeSlotRef.current) return
       if (typeof data.ratio === 'number') applyPreviewScroll(data.ratio)
     }
     const receivePointer = (event: MessageEvent) => {
       const data = event.data
-      if (data?.type !== 'stylemd:pointer' || !slotOf(event.source)) return
+      if (data?.type !== 'stylemd:pointer' || !frameSlotOf(event.source)) return
       if (data.over) setPreviewHoverTick((tick) => tick + 1)
     }
     window.addEventListener('message', receive)
@@ -333,7 +349,7 @@ export function App() {
       window.removeEventListener('message', receiveScroll)
       window.removeEventListener('message', receivePointer)
     }
-  }, [applyPreviewScroll, previewId])
+  }, [applyPreviewScroll, frameSlotOf, previewId])
 
   useEffect(() => {
     sendToFrames('stylemd:zoom', { zoom })
@@ -476,11 +492,33 @@ export function App() {
 
   const handleNewDocument = useCallback(() => setMarkdown(blankDocument()), [])
   const handleLoadSample = useCallback(() => setMarkdown(sampleMarkdown), [])
+  const pickWithInput = useCallback(
+    () =>
+      new Promise<File | null>((resolve) => {
+        const input = fileInputRef.current
+        if (!input) {
+          resolve(null)
+          return
+        }
+        pendingPick.current = resolve
+        input.click()
+      }),
+    [],
+  )
   const handleOpenFile = useCallback((file: OpenedFile) => {
     fileHandleRef.current = file.handle
     setFileName(file.name)
     setMarkdown(file.text)
   }, [])
+  /** 打开 Markdown：优先系统文件对话框（能拿到句柄，「保存」就能写回原文件），否则退回文件选择框。 */
+  const handleOpenDocument = useCallback(async () => {
+    try {
+      const picked = await openMarkdownFile(pickWithInput)
+      if (picked) handleOpenFile(picked)
+    } catch (error) {
+      window.alert(`无法读取 Markdown：${error instanceof Error ? error.message : String(error)}`)
+    }
+  }, [handleOpenFile, pickWithInput])
   /** 标题栏里改的是**文件名**；文档标题（前置元数据）不动，仍在灰色小字与页眉域里。 */
   const handleRenameFile = useCallback((stem: string) => {
     const name = stem.trim()
@@ -488,6 +526,8 @@ export function App() {
     setFileName(markdownFileName(name))
   }, [])
   const suggestedFileName = fileName ?? markdownFileName(documentName)
+  /** 标题栏上那个大字（不含扩展名），也是「另存为…」的建议文件名。 */
+  const ribbonFileName = fileName ? fileStem(fileName) : '未命名'
   const handleSaveDocumentAs = useCallback(
     async (name: string) => {
       try {
@@ -551,6 +591,49 @@ export function App() {
     )
   }, [exportingPdf, frameRefs, previewHtml, suggestedFileName])
 
+  /** 预览与导出都就绪了才能打印 / 导出：按钮的禁用条件与 Ctrl+P 共用同一份判断。 */
+  const canPrint =
+    validation.ok &&
+    !rendering.error &&
+    !exportingPdf &&
+    markdown === debouncedMarkdown &&
+    readyId === previewId &&
+    pagedStatus === 'paged'
+
+  /** 状态栏那两个加减按钮的步长；快捷键走同一条，缩放范围与它们一致。 */
+  const stepZoom = useCallback((direction: 1 | -1) => {
+    setZoom((current) => Math.min(2, Math.max(0.4, Number((current + direction * 0.1).toFixed(2)))))
+  }, [])
+
+  const runShortcut = useShortcuts({
+    save: () => void handleSaveDocument(),
+    saveAs: () => void handleSaveDocumentAs(ribbonFileName),
+    open: () => void handleOpenDocument(),
+    newDocument: handleNewDocument,
+    // 还没排完页不能导出（按钮那时也是禁用的），按了就当没按，别把没排完的 HTML 交出去。
+    print: () => {
+      if (canPrint) handlePrint()
+    },
+    zoomIn: () => stepZoom(1),
+    zoomOut: () => stepZoom(-1),
+    zoomReset: () => setZoom(1),
+  })
+
+  /**
+   * 预览 iframe 里按的键。点过预览之后焦点落在那个文档里，键事件不会冒泡到宿主，
+   * 只能由预览按注入的键位表认出来、postMessage 转过来（见 `renderer-paged` 的 keydown 转发）。
+   * 走 `runShortcut` 就意味着和宿主键盘走的是同一份处理函数。
+   */
+  useEffect(() => {
+    const receiveShortcut = (event: MessageEvent) => {
+      const data = event.data
+      if (data?.type !== 'stylemd:shortcut' || !frameSlotOf(event.source)) return
+      if (typeof data.shortcut === 'string') runShortcut(data.shortcut as ShortcutId)
+    }
+    window.addEventListener('message', receiveShortcut)
+    return () => window.removeEventListener('message', receiveShortcut)
+  }, [frameSlotOf, runShortcut])
+
   const roleCount = Object.keys(result.stats.counts).length
 
   return (
@@ -565,14 +648,7 @@ export function App() {
         onTabChange={setRibbonTab}
         autoDetect={autoDetect}
         status={{ roles: roleCount, warnings: result.warnings.length + validation.warnings.length, errors: validation.errors.length }}
-        canPrint={
-          validation.ok &&
-          !rendering.error &&
-          !exportingPdf &&
-          markdown === debouncedMarkdown &&
-          readyId === previewId &&
-          pagedStatus === 'paged'
-        }
+        canPrint={canPrint}
         canUndo={history.length > 0}
         onUndo={() => {
           const previous = history.at(-1)
@@ -595,12 +671,12 @@ export function App() {
         onPageChange={handlePageChange}
         onEditFurniture={handleEditFurniture}
         onDefaultsChange={handleDefaultsChange}
-        onOpenFile={handleOpenFile}
+        onOpenDocument={() => void handleOpenDocument()}
         onLoadSample={handleLoadSample}
         onNewDocument={handleNewDocument}
         onSaveDocument={handleSaveDocument}
         onSaveDocumentAs={handleSaveDocumentAs}
-        fileName={fileName ? fileStem(fileName) : '未命名'}
+        fileName={ribbonFileName}
         onRenameFile={handleRenameFile}
         autoSave={autoSave}
         onAutoSaveChange={handleAutoSaveChange}
@@ -691,6 +767,20 @@ export function App() {
         zoom={zoom}
         onZoomChange={setZoom}
         saved={saved}
+      />
+
+      {/* 打开 Markdown 的兜底入口（系统文件对话框用不了时走它）：菜单项与 Ctrl+O 共用这一份。 */}
+      <input
+        ref={fileInputRef}
+        type="file"
+        accept="text/markdown,text/plain,.md,.markdown"
+        style={{ display: 'none' }}
+        onChange={(event) => {
+          const file = event.target.files?.[0] ?? null
+          event.target.value = ''
+          pendingPick.current?.(file)
+          pendingPick.current = null
+        }}
       />
 
       {/* 页眉页脚弹窗排在样式窗口前面：从它点「样式」时，样式窗口要盖在它上面。 */}

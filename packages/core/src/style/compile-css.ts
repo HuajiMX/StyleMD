@@ -1,7 +1,7 @@
 import {
-  PAGE_SIZES_MM,
   cssRoleName,
   isInlineRole,
+  pageDimensionsMm,
   type BorderSide,
   type ComputedRoleStyle,
   type ComputedStyles,
@@ -286,21 +286,8 @@ function roleBlock(style: ComputedRoleStyle): { css: string; faces: string[] } {
 /** 默认页边距；页边距盒与内容宽度都按它兜底，别在别处另写一份。 */
 const DEFAULT_PAGE_MARGIN_MM = { top: 25, right: 22, bottom: 25, left: 25 }
 
-function resolvePageDimensionsMm(styles: ComputedStyles): { widthMm: number; heightMm: number } {
-  const size = styles.page.size ?? 'A4'
-  if (typeof size === 'string') {
-    const dimensions = PAGE_SIZES_MM[size] ?? PAGE_SIZES_MM['A4']!
-    return styles.page.orientation === 'landscape'
-      ? { widthMm: dimensions.heightMm, heightMm: dimensions.widthMm }
-      : dimensions
-  }
-  return styles.page.orientation === 'landscape'
-    ? { widthMm: size.heightMm, heightMm: size.widthMm }
-    : { widthMm: size.widthMm, heightMm: size.heightMm }
-}
-
 function resolvePageSize(styles: ComputedStyles): string {
-  const page = resolvePageDimensionsMm(styles)
+  const page = pageDimensionsMm(styles.page)
   return `${page.widthMm}mm ${page.heightMm}mm`
 }
 
@@ -311,7 +298,7 @@ function resolvePageSize(styles: ComputedStyles): string {
  */
 function pageContentWidth(styles: ComputedStyles): string {
   const margin = styles.page.marginMm ?? DEFAULT_PAGE_MARGIN_MM
-  const page = resolvePageDimensionsMm(styles)
+  const page = pageDimensionsMm(styles.page)
   return `calc(${page.widthMm}mm - ${margin.left}mm - ${margin.right}mm)`
 }
 

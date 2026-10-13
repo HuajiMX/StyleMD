@@ -1,6 +1,7 @@
 import type { ReactNode } from 'react'
 import { roleLabel } from '@stylemd/theme-schema'
 import { formatSavedAt } from '../lib/session'
+import { acceleratorLabel } from '../lib/shortcuts'
 import { IconBothPanes, IconEditorOnly, IconOutline, IconPreviewOnly } from './icons'
 
 export type ViewMode = 'edit' | 'both' | 'preview'
@@ -85,6 +86,7 @@ export function StatusBar(props: StatusBarProps) {
           type="button"
           className="icon-button"
           aria-label="缩小预览"
+          title={`缩小预览（${acceleratorLabel('zoomOut')}）`}
           onClick={() => props.onZoomChange(Math.max(0.4, Number((props.zoom - 0.1).toFixed(2))))}
         >
           −
@@ -102,6 +104,7 @@ export function StatusBar(props: StatusBarProps) {
           type="button"
           className="icon-button"
           aria-label="放大预览"
+          title={`放大预览（${acceleratorLabel('zoomIn')}）`}
           onClick={() => props.onZoomChange(Math.min(2, Number((props.zoom + 0.1).toFixed(2))))}
         >
           +

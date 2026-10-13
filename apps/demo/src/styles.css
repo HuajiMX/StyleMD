@@ -222,15 +222,19 @@ input[type='radio']:focus-visible {
   background: var(--panel); border: 1px solid var(--line-strong); border-radius: 4px;
   box-shadow: 0 10px 24px rgba(15, 23, 42, 0.18);
 }
+/* 命令名在左、快捷键提示贴右边：label 撑满剩余宽度把 keys 顶过去（别用 space-between，
+   「自动保存」那一行是勾选框 + 文字，会被推成两头分开）。 */
 .file-item {
-  display: block; width: 100%; padding: 4px 10px;
+  display: flex; align-items: center; gap: 14px; width: 100%; padding: 4px 10px;
   border: 0; border-radius: 3px; background: transparent;
   color: var(--ink); font: inherit; font-size: 12px; text-align: left; cursor: pointer;
 }
 .file-item:hover { background: var(--accent-soft); }
+.file-item-label { flex: 1 1 auto; }
+.file-item-keys { flex: 0 0 auto; color: var(--muted); font-size: 10.5px; font-variant-numeric: tabular-nums; }
 .file-sep { height: 1px; margin: 3px 4px; background: var(--line-strong); }
 /* 「自动保存」是复选项而不是命令项：整行点得动，但按一下不收起菜单。 */
-.file-item.file-check { display: flex; align-items: center; gap: 6px; cursor: pointer; }
+.file-item.file-check { gap: 6px; cursor: pointer; }
 .file-item.file-check input { width: 12px; height: 12px; margin: 0; accent-color: var(--accent); }
 .file-form { display: flex; flex-direction: column; gap: 6px; padding: 6px; }
 .file-form label { display: flex; flex-direction: column; gap: 4px; font-size: 11px; color: var(--muted); }

@@ -1,4 +1,4 @@
-import type { ComputedTableLayout, DocumentDefaults, PageSetup, StyleTheme, TableSpec } from './types'
+import type { ComputedTableLayout, DocumentDefaults, PageSetup, PageSize, StyleTheme, TableSpec } from './types'
 import { CURRENT_SCHEMA_VERSION } from './types'
 import { fontSlotsFromChain } from './fonts'
 
@@ -74,6 +74,21 @@ export const PAGE_SIZES_MM: Record<string, { widthMm: number; heightMm: number }
   A5: { widthMm: 148, heightMm: 210 },
   B5: { widthMm: 176, heightMm: 250 },
   Letter: { widthMm: 215.9, heightMm: 279.4 },
+}
+
+/**
+ * 纸张的实际尺寸（mm），「横向」在这里折成宽高对调。认不出的规格按 A4 兜底。
+ *
+ * 这是纸张尺寸的唯一读法：编译 `@page { size }`、判断页边距有没有超过纸面、
+ * 以及「打印」那条路（Electron 的 `print()` 不认 CSS 的 `@page`，纸张只能显式给，单位还是微米）
+ * 都从这儿取——调换宽高的逻辑写两遍，迟早有一处忘掉横向。
+ */
+export function pageDimensionsMm(page: Pick<PageSetup, 'size' | 'orientation'> = {}): PageSize {
+  const size = page.size ?? 'A4'
+  const box = typeof size === 'string' ? (PAGE_SIZES_MM[size] ?? PAGE_SIZES_MM['A4']!) : size
+  return page.orientation === 'landscape'
+    ? { widthMm: box.heightMm, heightMm: box.widthMm }
+    : { widthMm: box.widthMm, heightMm: box.heightMm }
 }
 
 export function createEmptyTheme(id = 'untitled', name = '未命名样式包'): StyleTheme {

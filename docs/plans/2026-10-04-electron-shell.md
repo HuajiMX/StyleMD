@@ -53,7 +53,13 @@
 - **没有安装包**：目前只有「跑起来」，没有 electron-builder / 签名 / 自动更新；`resolveRendererRoot()` 已为打包态留了 `resources/demo/dist` 这一路，但不是真打包验证过的。
 - **dev server 地址按候选探测**：本机 Vite 只绑了 `[::1]:5173`（`netstat` 确认），写死 `127.0.0.1` 会 `ERR_CONNECTION_REFUSED`。`scripts/dev.mjs` 因此探 `localhost` / `127.0.0.1` / `[::1]` 三个候选。完整的 `npm.cmd run desktop` 没能实跑（5173 被已有的 dev server 占着，Vite `strictPort` 会直接退出），验证方式是拿这个 URL 直跑 Electron 的 dev 分支。
 - **字体能力还没接进 UI**：`listSystemFonts()` 与 `local-fonts` 权限都已就绪，样式面板仍读的是 `apps/demo/src/lib/typePresets.ts` 里那份人工清单。下一步是让下拉「内置字体 / 本机字体」分组，并把回退链降级成进阶项。
-- **导出仍走浏览器打印**：还没有改用 `webContents.printToPDF`；文件写入的 File System Access API 在壳里的行为也还没实测，`apps/demo/src/lib/document.ts` 的回落分支是否被走到需要确认。
+- ~~**导出仍走浏览器打印**：……文件写入的 File System Access API 在壳里的行为也还没实测~~：导出已改走 `webContents.printToPDF`（见 [导出 PDF](2026-10-05-desktop-pdf-export.md)）。文件写入这一问也有了答案（2026-10-11）：
+  `showSaveFilePicker` 在壳里能弹系统对话框并拿到句柄，但 `createWritable()` 会抛
+  `NotAllowedError`「The request is not allowed by the user agent or the platform in the current context」——
+  **File System Access 的读写权限走 Electron 的 `setPermissionRequestHandler` / `setPermissionCheckHandler`**，
+  而当时那张放行表里只有 `local-fonts` 与 `clipboard-sanitized-write`，于是被自己人挡了。
+  放行 `fileSystem` 即可（自检里有一条守着这张表）。别把回落分支当答案：`<a download>` 在壳里是「另存一份」，
+  不叫保存。
 - **枚举精度**：注册表值名去 `(TrueType)` 后缀、拆 `A & B`、去 `@` 前缀都是启发式；本地化家族名（微软雅黑 / Microsoft YaHei）可能与 Chromium 的匹配名不一致，真正的对齐要靠 `queryLocalFonts()`。
 - **沙箱外才能跑**：GUI 进程在主机的文件沙箱里会 `0xC0000005` 崩溃，日常开发与自检都需要提升权限执行。
 - **`MainWindowHandle` 不能用来判断窗口是否显示**：主窗口与 detached DevTools 同属一个进程时它只报一个，排查中据此误判过一次「窗口没出来」。确认可见性用 `EnumWindows`（PID + 标题）或直接问用户。

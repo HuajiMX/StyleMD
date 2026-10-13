@@ -51,15 +51,32 @@ export const PRINT_CHROME_CSS = `@media print {
 export const PREVIEW_CHROME_CSS = `${SCREEN_CHROME_CSS}\n${PRINT_CHROME_CSS}`
 
 /**
+ * 宿主交给预览的一份键位表：`key` 用 `KeyboardEvent.key` 的小写写法，`shift` 必须逐条对上。
+ * 帧里只做「这一按是不是我们的键」的判断，动作仍由宿主按同一个 `id` 跑——表只有一份，见
+ * `apps/demo/src/lib/shortcuts.ts`。
+ */
+export interface PreviewShortcut {
+  id: string
+  key: string
+  shift: boolean
+}
+
+/**
  * 把 Paged.js polyfill 内联进 HTML。
  * 内联而不是走 CDN，是因为导出必须离线可用，且预览与导出要用同一份实现。
  *
  * 注意：必须用函数式替换。替换串里只要出现 `$'` / `` $` `` / `$&` 这类序列，
  * String.replace 会把它当成特殊模式展开，直接把脚本内容截断（这个坑真实踩到过）。
  */
-export function injectPagedPolyfill(html: string, polyfillSource: string, messageId = ''): string {
+export function injectPagedPolyfill(
+  html: string,
+  polyfillSource: string,
+  messageId = '',
+  shortcuts: PreviewShortcut[] = [],
+): string {
   const safeSource = escapeForInlineScript(polyfillSource)
   const id = JSON.stringify(messageId).replace(/</g, '\\u003c')
+  const shortcutTable = JSON.stringify(shortcuts).replace(/</g, '\\u003c')
   const screenCss = JSON.stringify(SCREEN_CHROME_CSS).replace(/</g, '\\u003c')
   const toolbarCss = JSON.stringify(PRINT_TOOLBAR_CSS).replace(/</g, '\\u003c')
   const lifecycle = `
@@ -158,6 +175,24 @@ document.documentElement.addEventListener('pointermove', function() {
   if (now - lastPointerReport < 300) return;
   lastPointerReport = now;
   reportPointer(true);
+});
+// 快捷键：宿主与预览是**两个文档**，键事件不会冒泡过去——点过预览之后焦点就在这个文档里，
+// 宿主 window 上的监听器一个字都收不到（用户看到的现象是「先点预览，再按 Ctrl+= 没反应」）。
+// 所以这里就地认一遍（表由宿主注入，只认不处理），认出来转给宿主，动作仍在宿主那边按同一个 id 跑。
+// 必须**同步** preventDefault：等宿主的回执再拦就晚了，Chromium 那时已经把 Ctrl+= / Ctrl+- / Ctrl+0
+// 当成整页缩放执行完了。也只拦表里有的组合——Ctrl+C / Ctrl+A 留给自己，预览里的文字要能选中、复制。
+var shortcuts = ${shortcutTable};
+document.addEventListener('keydown', function(event) {
+  if (!event.ctrlKey && !event.metaKey) return;
+  if (event.altKey || window.parent === window) return;
+  var key = (event.key || '').toLowerCase();
+  for (var i = 0; i < shortcuts.length; i += 1) {
+    var combo = shortcuts[i];
+    if (combo.key !== key || combo.shift !== (event.shiftKey === true)) continue;
+    event.preventDefault();
+    window.parent.postMessage({ type: 'stylemd:shortcut', id: ${id}, shortcut: combo.id }, '*');
+    return;
+  }
 });
 // 跨页表格：Paged.js 把一张表按页切成多个独立 <table>，每片只按自己那部分内容算列宽，跨页就对不齐。
 // 注意不能等分页完再统一列宽：那会把行重新排高、把内容挤出页面（实测连表格下框线都会跟着跑出页外）。

@@ -1,13 +1,15 @@
 import { useEffect, useRef, useState } from 'react'
 import { createPortal } from 'react-dom'
-import { canWriteFiles, openMarkdownFile, type OpenedFile } from '../lib/document'
+import { canWriteFiles } from '../lib/document'
+import { acceleratorLabel, ariaKeyshortcuts, type ShortcutId } from '../lib/shortcuts'
 import { IconChevronDown } from './icons'
 
 interface FileMenuProps {
   /** 文件名主名（不含 .md），「另存为」表单拿它当默认值。 */
   fileName: string
   onNew: () => void
-  onOpenFile: (file: OpenedFile) => void
+  /** 打开 Markdown 的全过程在 App 里（系统对话框 / 隐藏的文件选择框都在那一份），这里只管点。 */
+  onOpen: () => void
   onLoadSample: () => void
   onSave: () => void
   onSaveAs: (name: string) => void
@@ -35,22 +37,8 @@ export function FileMenu(props: FileMenuProps) {
   const [anchor, setAnchor] = useState<{ left: number; top: number } | null>(null)
   const rootRef = useRef<HTMLDivElement>(null)
   const panelRef = useRef<HTMLDivElement>(null)
-  const fileInput = useRef<HTMLInputElement>(null)
-  /** `<input type=file>` 是弹不出系统对话框（或调用失败）时的兜底，用 Promise 包一层好 await。 */
-  const pendingPick = useRef<((file: File | null) => void) | null>(null)
   const closeTimer = useRef<number | null>(null)
   const open = pinned || hovered
-
-  const pickWithInput = () =>
-    new Promise<File | null>((resolve) => {
-      const input = fileInput.current
-      if (!input) {
-        resolve(null)
-        return
-      }
-      pendingPick.current = resolve
-      input.click()
-    })
 
   const cancelPendingClose = () => {
     if (closeTimer.current === null) return
@@ -144,35 +132,34 @@ export function FileMenu(props: FileMenuProps) {
     close()
   }
 
-  const handleOpen = async () => {
-    try {
-      const picked = await openMarkdownFile(pickWithInput)
-      if (picked) props.onOpenFile(picked)
-    } catch (error) {
-      window.alert(`无法读取 Markdown：${error instanceof Error ? error.message : String(error)}`)
-    } finally {
-      close()
-    }
-  }
-
-  const items = [
-    { key: 'new', label: '新建', hint: '清空当前内容，起一份新文档', run: () => props.onNew() },
+  /** 菜单项：`shortcut` 有值时右边显示按法（文案与 aria 都取自 lib/shortcuts 那份表）。 */
+  const items: { key: string; label: string; hint: string; shortcut?: ShortcutId; run: () => void }[] = [
+    {
+      key: 'new',
+      label: '新建',
+      shortcut: 'newDocument',
+      hint: '清空当前内容，起一份新文档',
+      run: () => props.onNew(),
+    },
     {
       key: 'open',
       label: '打开…',
+      shortcut: 'open',
       hint: '从磁盘载入 Markdown，之后「保存」写回同一个文件',
-      run: () => void handleOpen(),
+      run: () => props.onOpen(),
     },
     { key: 'sample', label: '载入示例文档', hint: '用内置的论文示例替换当前内容', run: () => props.onLoadSample() },
     {
       key: 'save',
       label: '保存',
+      shortcut: 'save',
       hint: canWriteFiles() ? '写回打开的文件；还没打开文件就按「另存为」处理' : '当前浏览器不能直接写文件，改为下载 .md',
       run: () => props.onSave(),
     },
     {
       key: 'saveAs',
       label: '另存为…',
+      shortcut: 'saveAs',
       hint: canWriteFiles() ? '选一个文件写进去（文件名在系统对话框里改）' : '换一个文件名下载一份',
       // 能写文件时文件名交给系统对话框，不用先在自己这个输入框里问一遍
       run: () => (canWriteFiles() ? void props.onSaveAs(props.fileName) : startForm('saveAs')),
@@ -251,13 +238,20 @@ export function FileMenu(props: FileMenuProps) {
                       type="button"
                       role="menuitem"
                       className="file-item"
-                      title={item.hint}
+                      aria-keyshortcuts={item.shortcut ? ariaKeyshortcuts(item.shortcut) : undefined}
+                      title={item.shortcut ? `${item.hint}（${acceleratorLabel(item.shortcut)}）` : item.hint}
                       onClick={() => {
                         item.run()
-                        if (item.key !== 'saveAs' && item.key !== 'open') close()
+                        // 「另存为」可能要在面板里开一个输入框，其余命令按完就收起。
+                        if (item.key !== 'saveAs') close()
                       }}
                     >
-                      {item.label}
+                      <span className="file-item-label">{item.label}</span>
+                      {item.shortcut ? (
+                        <span className="file-item-keys" aria-hidden="true">
+                          {acceleratorLabel(item.shortcut)}
+                        </span>
+                      ) : null}
                     </button>
                   ))}
                   <span className="file-sep" role="separator" />
@@ -267,7 +261,7 @@ export function FileMenu(props: FileMenuProps) {
                       checked={props.autoSave}
                       onChange={(event) => props.onAutoSaveChange(event.target.checked)}
                     />
-                    自动保存
+                    <span className="file-item-label">自动保存</span>
                   </label>
                 </>
               )}
@@ -275,19 +269,6 @@ export function FileMenu(props: FileMenuProps) {
             document.body,
           )
         : null}
-
-      <input
-        ref={fileInput}
-        type="file"
-        accept="text/markdown,text/plain,.md,.markdown"
-        style={{ display: 'none' }}
-        onChange={(event) => {
-          const file = event.target.files?.[0] ?? null
-          event.target.value = ''
-          pendingPick.current?.(file)
-          pendingPick.current = null
-        }}
-      />
     </div>
   )
 }

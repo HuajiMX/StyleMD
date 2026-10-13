@@ -32,10 +32,20 @@ const isSmoke = process.env.STYLEMD_SMOKE === '1'
 
 /**
  * 只放行桌面版确实用得上的能力，其余（摄像头、定位、通知……）一律拒绝。
- * `local-fonts` 是 Chromium 的字体枚举权限：放行之后渲染进程才能用
- * `window.queryLocalFonts()`，拿到的名字才是 Chromium 真正会匹配的那套。
+ *
+ * - `local-fonts`：Chromium 的字体枚举权限，放行之后渲染进程才能用
+ *   `window.queryLocalFonts()`，拿到的名字才是 Chromium 真正会匹配的那套。
+ * - `fileSystem`：「保存 / 另存为」的写入权限走的也是这一套处理器（Electron 会带上
+ *   `filePath` / `accessType: writable|readable` 来问）。挡掉它 `createWritable()` 就抛
+ *   `NotAllowedError`：「The request is not allowed by the user agent or the platform in the
+ *   current context」——选完文件才失败，界面上只留一句「保存失败」，真踩过。
  */
-const ALLOWED_PERMISSIONS = new Set(['local-fonts', 'clipboard-sanitized-write'])
+const ALLOWED_PERMISSIONS = new Set(['local-fonts', 'clipboard-sanitized-write', 'fileSystem'])
+
+/** 权限判定单独拎出来：两个处理器与无头自检用的是同一份，别各写一遍。 */
+function isPermissionAllowed(permission: string): boolean {
+  return ALLOWED_PERMISSIONS.has(permission)
+}
 
 /**
  * 自绘标题栏的高度（与 `apps/demo` 的 `--titlebar-height` 对齐）。
@@ -326,6 +336,34 @@ async function runSmoke(win: BrowserWindow): Promise<void> {
         exportStatus = 'throw: ' + (error && error.message ? error.message : String(error))
       }
     }
+    // 快捷键：桌面壳删掉了默认菜单栏，加速键没有宿主可挂，Ctrl+S 靠渲染进程自己听 keydown。
+    // 这里把系统保存框换成假句柄再按键（真弹对话框的话自检会挂在那儿），只看它有没有真的走完一次保存。
+    let shortcutSave = 'none'
+    if (mounted) {
+      try {
+        const writes = []
+        const fakePicker = async (options) => ({
+          name: (options && options.suggestedName) || 'stylemd-smoke.md',
+          async createWritable() {
+            return {
+              async write(text) { writes.push(text) },
+              async close() {},
+            }
+          },
+        })
+        window.showSaveFilePicker = fakePicker
+        // 万一这个属性在壳里改不动，就干脆别按键，别让真保存框把自检卡住。
+        if (window.showSaveFilePicker !== fakePicker) {
+          shortcutSave = 'cannot-stub'
+        } else {
+          window.dispatchEvent(new KeyboardEvent('keydown', { key: 's', ctrlKey: true, cancelable: true }))
+          const written = await waitFor(() => writes.length > 0, 5000)
+          shortcutSave = written ? 'written:' + writes[0].length : 'none'
+        }
+      } catch (error) {
+        shortcutSave = 'throw:' + (error && error.message ? error.message : String(error))
+      }
+    }
     return {
       mounted,
       hasBridge: Boolean(bridge),
@@ -354,6 +392,7 @@ async function runSmoke(win: BrowserWindow): Promise<void> {
       previewPages,
       exportStatus,
       exportBytes,
+      shortcutSave,
       title: document.title,
     }
   })()`)) as Record<string, unknown>
@@ -380,7 +419,15 @@ async function runSmoke(win: BrowserWindow): Promise<void> {
     ['给右上角的系统窗口按钮留出了位置', (titlebar?.rightPadding ?? 0) >= 140],
     ['桥开了 PDF 导出通道', report.hasExportPdf === true],
     ['桌面壳里导出按钮改成「导出 PDF」', report.exportLabel === '导出 PDF'],
+    [
+      '放行了文件系统权限（桌面端「保存」要写回文件）',
+      isPermissionAllowed('fileSystem') && !isPermissionAllowed('geolocation'),
+    ],
     ['导出 PDF 落盘成功', report.exportStatus === 'saved' && (report.exportBytes as number) > 1000],
+    [
+      'Ctrl+S 在桌面壳里走完保存（渲染进程自己接的快捷键）',
+      typeof report.shortcutSave === 'string' && report.shortcutSave.startsWith('written:'),
+    ],
     [
       '导出 PDF 页数与预览一致',
       smokePdf !== null && smokePdf.pages !== null && smokePdf.pages === Number(report.previewPages),
@@ -433,9 +480,9 @@ async function main(): Promise<void> {
   if (!isMac) Menu.setApplicationMenu(null)
 
   session.defaultSession.setPermissionRequestHandler((_contents, permission, callback) => {
-    callback(ALLOWED_PERMISSIONS.has(permission))
+    callback(isPermissionAllowed(permission))
   })
-  session.defaultSession.setPermissionCheckHandler((_contents, permission) => ALLOWED_PERMISSIONS.has(permission))
+  session.defaultSession.setPermissionCheckHandler((_contents, permission) => isPermissionAllowed(permission))
 
   ipcMain.handle(CHANNELS.listFontAliases, () => listFontAliases())
   ipcMain.handle(CHANNELS.exportPdf, exportPdf)
